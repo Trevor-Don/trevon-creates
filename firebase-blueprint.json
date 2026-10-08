@@ -1,0 +1,308 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role-based access for studio owner and clients",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "client"] },
+        "name": { "type": "string" },
+        "company": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "email", "role", "name"]
+    },
+    "Client": {
+      "title": "Client",
+      "description": "Managed client account for project tracking and portal access",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "company": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "archived", "pending"] },
+        "totalBudget": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "company", "email", "status"]
+    },
+    "Lead": {
+      "title": "Lead",
+      "description": "Inbound prospective client lead from website intake",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "company": { "type": "string" },
+        "projectType": { "type": "string" },
+        "budgetRange": { "type": "string" },
+        "timeline": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["new", "contacted", "qualified", "converted", "lost"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "projectType", "status", "createdAt"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Client engagement managed through 6 standardized stages",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "title": { "type": "string" },
+        "stage": { "type": "string" },
+        "progress": { "type": "number" },
+        "budgetTotal": { "type": "number" },
+        "budgetPaid": { "type": "number" },
+        "currency": { "type": "string" },
+        "startDate": { "type": "string" },
+        "targetCompletionDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "paused", "completed", "cancelled"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "clientId", "title", "stage", "progress", "status"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Step or deliverable checklist task inside a project",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "stage": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "assignedTo": { "type": "string", "enum": ["admin", "client"] },
+        "status": { "type": "string", "enum": ["pending", "in_progress", "submitted", "approved", "revision_requested"] },
+        "dueDate": { "type": "string" },
+        "isMilestone": { "type": "boolean" },
+        "requiresSignature": { "type": "boolean" },
+        "approvalStatus": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["id", "projectId", "stage", "title", "assignedTo", "status"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "Milestone invoice with payment status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "sent", "paid", "overdue"] },
+        "dueDate": { "type": "string" },
+        "issueDate": { "type": "string" }
+      },
+      "required": ["id", "projectId", "invoiceNumber", "amount", "status"]
+    },
+    "Document": {
+      "title": "Document",
+      "description": "Contracts, proposals, and signed agreements",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "type": "string" },
+        "content": { "type": "string" },
+        "isSigned": { "type": "boolean" },
+        "signedAt": { "type": "string" },
+        "signedBy": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "projectId", "title", "type", "isSigned"]
+    },
+    "Deliverable": {
+      "title": "Deliverable",
+      "description": "Prototype links, files, or deliverables",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "url": { "type": "string" },
+        "type": { "type": "string" },
+        "version": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "projectId", "title", "url", "type"]
+    },
+    "ProjectUpdate": {
+      "title": "ProjectUpdate",
+      "description": "Timestamped log update on project progress",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorRole": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "projectId", "authorName", "title", "body"]
+    },
+    "PortfolioItem": {
+      "title": "PortfolioItem",
+      "description": "Public case study and architecture breakdown",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "client": { "type": "string" },
+        "summary": { "type": "string" },
+        "description": { "type": "string" },
+        "liveUrl": { "type": "string" },
+        "featured": { "type": "boolean" }
+      },
+      "required": ["id", "title", "slug", "client", "summary"]
+    },
+    "ConnectionTest": {
+      "title": "ConnectionTest",
+      "description": "Health check document for Firestore connectivity",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["status"]
+    },
+    "StudioService": {
+      "title": "StudioService",
+      "description": "Configurable studio service offering and engineering discipline",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "tagline": { "type": "string" },
+        "description": { "type": "string" },
+        "deliverables": { "type": "array" },
+        "startingPriceKES": { "type": "number" },
+        "startingPriceUSD": { "type": "number" },
+        "timeline": { "type": "string" },
+        "icon": { "type": "string" },
+        "popular": { "type": "boolean" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["id", "title", "startingPriceKES", "startingPriceUSD", "active"]
+    },
+    "PricingPackage": {
+      "title": "PricingPackage",
+      "description": "Standardized pricing package and sprint scope",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "badge": { "type": "string" },
+        "priceKES": { "type": "number" },
+        "priceUSD": { "type": "number" },
+        "billingPeriod": { "type": "string" },
+        "deliveryTime": { "type": "string" },
+        "description": { "type": "string" },
+        "features": { "type": "array" },
+        "highlight": { "type": "boolean" },
+        "depositRequiredPercent": { "type": "number" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["id", "name", "priceKES", "priceUSD", "active"]
+    },
+    "ClientReview": {
+      "title": "ClientReview",
+      "description": "Client rating, feedback and Google Business Profile testimonial",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "clientEmail": { "type": "string" },
+        "clientCompany": { "type": "string" },
+        "serviceName": { "type": "string" },
+        "rating": { "type": "number" },
+        "headline": { "type": "string" },
+        "comment": { "type": "string" },
+        "wouldRecommend": { "type": "boolean" },
+        "googleBusinessReady": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["pending", "published", "featured"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "clientName", "rating", "headline", "comment", "status"]
+    }
+  },
+  "firestore": {
+    "/test/{testId}": {
+      "schema": "ConnectionTest",
+      "description": "Test collection for server connectivity checks"
+    },
+    "/services/{serviceId}": {
+      "schema": "StudioService",
+      "description": "Studio service offerings and deliverables"
+    },
+    "/pricing/{packageId}": {
+      "schema": "PricingPackage",
+      "description": "Standardized pricing tiers and packages"
+    },
+    "/reviews/{reviewId}": {
+      "schema": "ClientReview",
+      "description": "Client reviews and Google Business Profile testimonials"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and role access"
+    },
+    "/clients/{clientId}": {
+      "schema": "Client",
+      "description": "Managed client accounts"
+    },
+    "/leads/{leadId}": {
+      "schema": "Lead",
+      "description": "Project inquiries and sales leads"
+    },
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Projects and milestones"
+    },
+    "/projects/{projectId}/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Tasks subcollection partitioned by project"
+    },
+    "/projects/{projectId}/invoices/{invoiceId}": {
+      "schema": "Invoice",
+      "description": "Invoices subcollection partitioned by project"
+    },
+    "/projects/{projectId}/documents/{documentId}": {
+      "schema": "Document",
+      "description": "Contracts and documents partitioned by project"
+    },
+    "/projects/{projectId}/deliverables/{deliverableId}": {
+      "schema": "Deliverable",
+      "description": "Deliverables subcollection partitioned by project"
+    },
+    "/projects/{projectId}/updates/{updateId}": {
+      "schema": "ProjectUpdate",
+      "description": "Project updates feed"
+    },
+    "/portfolio/{itemId}": {
+      "schema": "PortfolioItem",
+      "description": "Published portfolio case studies"
+    }
+  }
+}

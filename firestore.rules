@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwnerEmail() {
+      return isSignedIn() && (
+        request.auth.token.email == 'don.trevor001@gmail.com' ||
+        request.auth.token.email == 'trevon@trevoncreates.com'
+      );
+    }
+
+    function isAdmin() {
+      return isOwnerEmail() || (
+        isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    function isClientUser(clientId) {
+      return isSignedIn() && (
+        request.auth.uid == clientId ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clientId == clientId)
+      );
+    }
+
+    // Health check / connection test collection
+    match /test/{testId} {
+      allow read, write: if isValidId(testId);
+    }
+
+    // Public Portfolio Case Studies
+    match /portfolio/{itemId} {
+      allow read: if isValidId(itemId);
+      allow write: if isValidId(itemId);
+    }
+
+    // Studio Services & Engineering Disciplines
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if isValidId(serviceId);
+    }
+
+    // Studio Pricing Packages & Sprints
+    match /pricing/{packageId} {
+      allow read: if true;
+      allow write: if isValidId(packageId);
+    }
+
+    // Client Reviews & Testimonials
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create, update, delete: if isValidId(reviewId);
+    }
+
+    // Public Landing Configuration
+    match /landingConfig/{configId} {
+      allow read: if true;
+      allow write: if isValidId(configId);
+    }
+
+    // Studio Settings
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isValidId(settingId);
+    }
+
+    // Public Inbound Leads
+    match /leads/{leadId} {
+      allow read, create, update, delete: if isValidId(leadId);
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow read, write: if isValidId(userId);
+    }
+
+    // Clients
+    match /clients/{clientId} {
+      allow read, write: if isValidId(clientId);
+    }
+
+    // Projects and Nested Collections
+    match /projects/{projectId} {
+      allow read, write: if isValidId(projectId);
+
+      match /{allSubcollections=**} {
+        allow read, write: if true;
+      }
+    }
+  }
+}

@@ -1,0 +1,72 @@
+name: Trevon Creates CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  GCP_REGION: europe-west1
+  SERVICE_NAME: trevon-creates-platform
+  AR_REPOSITORY: trevon-creates
+  IMAGE_NAME: platform
+
+jobs:
+  validate:
+    name: Lint & Compile Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: TypeScript Lint & Typecheck
+        run: npm run lint
+
+      - name: Production Build Verification
+        run: npm run build
+
+  deploy:
+    name: Deploy to Cloud Run (europe-west1)
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Authenticate to Google Cloud
+      # Supports Workload Identity Federation (recommended) or GCP_SA_KEY secret
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: '>= 460.0.0'
+
+      - name: Execute Cloud Build Pipeline (europe-west1)
+        run: |
+          gcloud builds submit \
+            --config=cloudbuild.yaml \
+            --region=${{ env.GCP_REGION }} \
+            --substitutions=_REGION=${{ env.GCP_REGION }},_SERVICE_NAME=${{ env.SERVICE_NAME }},_AR_REPO=${{ env.AR_REPOSITORY }},_IMAGE_NAME=${{ env.IMAGE_NAME }}
