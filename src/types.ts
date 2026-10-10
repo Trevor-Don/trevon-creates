@@ -257,6 +257,7 @@ export interface LandingPageConfig {
   founderBio: string;
   founderExperienceYears: string;
   founderDailyActions: string;
+  founderPhotoUrl?: string;
   whatsappNumber: string;
   featuredProjectIds: string[];
   updatedAt: string;
@@ -318,6 +319,9 @@ export interface StudioSettings {
   adminEmail: string;
   whatsappNumber: string;
   currency: string;
+  exchangeRateUsdToKes?: number;
+  enableRegionalCurrencyDetection?: boolean;
+  founderPhotoUrl?: string;
   resendConfigured: boolean;
   cloudRunEndpoint: string;
   googleBusinessProfileUrl?: string;

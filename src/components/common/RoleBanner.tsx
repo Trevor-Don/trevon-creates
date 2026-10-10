@@ -102,15 +102,15 @@ export const RoleBanner: React.FC = () => {
           </button>
 
           <button
-            onClick={() => switchUser('client', 'amina@kipaoretail.com')}
+            onClick={() => switchUser('client', 'samuel@shift-app.com')}
             className={`px-2 py-1 rounded text-[11px] flex items-center gap-1 border transition-all ${
-              surface === 'client' && currentUser.email === 'amina@kipaoretail.com'
+              surface === 'client' && currentUser.email === 'samuel@shift-app.com'
                 ? 'bg-[#00FF00]/15 border-[#00FF00]/50 text-[#00FF00]'
                 : 'bg-black/40 border-white/5 text-neutral-400 hover:text-[#00FF00] hover:border-[#00FF00]/30'
             }`}
           >
             <User className="w-3 h-3" />
-            Client
+            Client (Shift)
           </button>
 
           <button

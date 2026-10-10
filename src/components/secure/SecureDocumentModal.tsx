@@ -41,6 +41,7 @@ export const SecureDocumentModal: React.FC<SecureDocumentModalProps> = ({
     payInvoiceWithToken,
     settings,
     currentUser,
+    showToast,
   } = useApp();
 
   // Signing state
@@ -91,6 +92,7 @@ export const SecureDocumentModal: React.FC<SecureDocumentModalProps> = ({
       signDocumentWithToken(currentToken, signerFullName.trim(), sigData, signerNotes.trim());
       setIsSigning(false);
       setSigningSuccess(true);
+      showToast('success', 'Document Signed', `Contract signed digitally by ${signerFullName.trim()}. Timestamped & encrypted.`);
       setTimeout(() => {
         setSigningSuccess(false);
         onClose();
@@ -111,6 +113,7 @@ export const SecureDocumentModal: React.FC<SecureDocumentModalProps> = ({
         payInvoiceWithToken(currentToken, 'M-Pesa Express (STK Push)', generatedRef, paymentNotes);
         setIsPaying(false);
         setPaySuccess(true);
+        showToast('success', 'M-Pesa Payment Confirmed', `STK Push transaction verified [Ref: ${generatedRef}]. Invoice settled!`);
         setTimeout(() => {
           setPaySuccess(false);
           setStkPushStep('idle');

@@ -11,10 +11,11 @@ import { DirectorySwitcher } from './components/common/DirectorySwitcher';
 import { ClientPortal } from './components/portal/ClientPortal';
 import { AdminPortal } from './components/admin/AdminPortal';
 import { SecureDocumentModal } from './components/secure/SecureDocumentModal';
+import { ToastContainer } from './components/common/Toast';
 import { Document, Invoice, Project } from './types';
 
 export const AppContent: React.FC = () => {
-  const { surface, currentPath, navigateTo, getDocumentByToken, getInvoiceByToken, projects } = useApp();
+  const { surface, currentPath, navigateTo, getDocumentByToken, getInvoiceByToken, projects, toasts, dismissToast } = useApp();
   const [activePublicTab, setActivePublicTab] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const p = window.location.pathname.toLowerCase();
@@ -24,8 +25,14 @@ export const AppContent: React.FC = () => {
     return 'home';
   });
   const [isContactOpen, setIsContactOpen] = useState(false);
+  const [contactPackageId, setContactPackageId] = useState<string | null>(null);
   const [isDirectorySwitcherOpen, setIsDirectorySwitcherOpen] = useState(false);
   const [showDevHud, setShowDevHud] = useState(false);
+
+  const handleOpenContact = (pkgId?: string) => {
+    setContactPackageId(pkgId || null);
+    setIsContactOpen(true);
+  };
 
   // Standalone Secure Token Gateway Modal
   const [secureModalOpen, setSecureModalOpen] = useState(false);
@@ -94,7 +101,7 @@ export const AppContent: React.FC = () => {
       {/* 2. Top Navigation Bar (Rendered on public site only; dashboards use dedicated side panel) */}
       {surface === 'public' && (
         <Header
-          onOpenContact={() => setIsContactOpen(true)}
+          onOpenContact={() => handleOpenContact()}
           activePublicTab={activePublicTab}
           setActivePublicTab={setActivePublicTab}
         />
@@ -106,7 +113,7 @@ export const AppContent: React.FC = () => {
           <>
             {activePublicTab === 'home' && (
               <PublicHome
-                onOpenContact={() => setIsContactOpen(true)}
+                onOpenContact={(pkgId) => handleOpenContact(pkgId)}
                 onExploreWork={() => {
                   setActivePublicTab('work');
                   navigateTo('/work');
@@ -114,10 +121,10 @@ export const AppContent: React.FC = () => {
               />
             )}
             {activePublicTab === 'work' && (
-              <WorkPage onOpenContact={() => setIsContactOpen(true)} />
+              <WorkPage onOpenContact={() => handleOpenContact()} />
             )}
             {activePublicTab === 'about' && (
-              <AboutPage onOpenContact={() => setIsContactOpen(true)} />
+              <AboutPage onOpenContact={() => handleOpenContact()} />
             )}
           </>
         )}
@@ -130,7 +137,7 @@ export const AppContent: React.FC = () => {
       {/* 4. Footer with Directory Navigation (Rendered on public site only) */}
       {surface === 'public' && (
         <Footer
-          onOpenContact={() => setIsContactOpen(true)}
+          onOpenContact={() => handleOpenContact()}
           onOpenDirectories={() => setIsDirectorySwitcherOpen(true)}
         />
       )}
@@ -138,7 +145,11 @@ export const AppContent: React.FC = () => {
       {/* 5. Project Inquiry Intake Modal */}
       <ContactModal
         isOpen={isContactOpen}
-        onClose={() => setIsContactOpen(false)}
+        onClose={() => {
+          setIsContactOpen(false);
+          setContactPackageId(null);
+        }}
+        initialPackageId={contactPackageId}
       />
 
       {/* 6. System Directory Switcher Modal (⌘K / Ctrl+K) */}
@@ -155,6 +166,9 @@ export const AppContent: React.FC = () => {
         invoice={secureInv}
         project={secureProj}
       />
+
+      {/* 8. Global High-Contrast Feedback Toast System */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 };

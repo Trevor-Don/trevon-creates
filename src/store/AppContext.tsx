@@ -47,6 +47,8 @@ import {
 } from '../lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
+import { ToastMessage } from '../components/common/Toast';
+import { detectVisitorRegion, getVisitorCurrency, DetectedRegion, SUPPORTED_CURRENCIES } from '../utils/currency';
 
 export type SurfaceType = 'public' | 'client' | 'admin';
 export type ThemeMode = 'dark' | 'light';
@@ -59,6 +61,12 @@ interface AppContextType {
   theme: ThemeMode;
   toggleTheme: () => void;
   setTheme: (theme: ThemeMode) => void;
+  toasts: ToastMessage[];
+  showToast: (type: 'success' | 'error' | 'info', title: string, message?: string) => void;
+  dismissToast: (id: string) => void;
+  visitorCurrency: string;
+  setVisitorCurrency: (currency: string) => void;
+  detectedRegion: DetectedRegion;
   currentUser: User;
   firebaseUser: FirebaseUser | null;
   firebaseAuthLoading: boolean;
@@ -240,11 +248,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
-  const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]); // Default admin Trevor
+
+  // Toast Feedback Message System
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const showToast = (type: 'success' | 'error' | 'info', title: string, message?: string) => {
+    const id = 'toast-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+    const newToast: ToastMessage = { id, type, title, message };
+    setToasts((prev) => [...prev.slice(-3), newToast]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4500);
+  };
+  const dismissToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  // Background regional currency auto-detection & unified reactive state
+  const [detectedRegion, setDetectedRegion] = useState<DetectedRegion>(() => detectVisitorRegion());
+  const [visitorCurrency, setVisitorCurrencyState] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('trevon_visitor_currency');
+      if (saved && SUPPORTED_CURRENCIES[saved]) return saved;
+    } catch {}
+    const detected = detectVisitorRegion();
+    return detected.currencyCode || 'KES';
+  });
+
+  const setVisitorCurrency = (cur: string) => {
+    if (!cur) return;
+    setVisitorCurrencyState(cur);
+    const info = SUPPORTED_CURRENCIES[cur];
+    if (info) {
+      setDetectedRegion((prev) => ({
+        ...prev,
+        currencyCode: cur,
+        regionName: info.region,
+        flag: info.flag,
+      }));
+    }
+    try {
+      localStorage.setItem('trevon_visitor_currency', cur);
+      window.dispatchEvent(new CustomEvent('trevon_currency_changed', { detail: cur }));
+    } catch {}
+  };
+
+  useEffect(() => {
+    const handleSync = () => {
+      try {
+        const saved = localStorage.getItem('trevon_visitor_currency');
+        if (saved && saved !== visitorCurrency && SUPPORTED_CURRENCIES[saved]) {
+          setVisitorCurrencyState(saved);
+        }
+      } catch {}
+    };
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('trevon_currency_changed', handleSync);
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('trevon_currency_changed', handleSync);
+    };
+  }, [visitorCurrency]);
+
+  const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]); // Default admin Trevor Don
   const [clients, setClients] = useState<Client[]>(INITIAL_CLIENTS);
   const [leads, setLeads] = useState<Lead[]>(INITIAL_LEADS);
   const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
-  const [currentProjectId, setCurrentProjectId] = useState<string>('proj-kipao-retail');
+  const [currentProjectId, setCurrentProjectId] = useState<string>('proj-shift');
   const [templates, setTemplates] = useState<ProjectTemplate[]>(DEFAULT_TEMPLATES);
   const [portfolio, setPortfolio] = useState<PortfolioItem[]>(INITIAL_PORTFOLIO);
   const [services, setServices] = useState<StudioService[]>(INITIAL_SERVICES);
@@ -280,7 +349,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       const savedPortfolio = localStorage.getItem('trevon_portfolio');
       if (savedPortfolio) {
-        setPortfolio(JSON.parse(savedPortfolio));
+        const parsed = JSON.parse(savedPortfolio) as PortfolioItem[];
+        const onlyReal = parsed.filter((p) => ['port-shift', 'port-mduka', 'port-nyana-hills'].includes(p.id));
+        if (onlyReal.length > 0) setPortfolio(onlyReal);
+      }
+      const savedProjects = localStorage.getItem('trevon_projects');
+      if (savedProjects) {
+        const parsedProj = JSON.parse(savedProjects) as Project[];
+        const onlyRealProj = parsedProj.filter((p) => ['proj-shift', 'proj-mduka', 'proj-nyana'].includes(p.id));
+        if (onlyRealProj.length > 0) setProjects(onlyRealProj);
       }
       const savedServices = localStorage.getItem('trevon_services');
       if (savedServices) {
@@ -319,24 +396,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           await setDoc(doc(db, 'landingConfig', 'main'), INITIAL_LANDING_CONFIG);
         }
 
-        // Portfolio
-        const portSnap = await getDocs(collection(db, 'portfolio'));
-        if (!portSnap.empty) {
-          const livePortfolio: PortfolioItem[] = [];
-          portSnap.forEach((d) => {
-            livePortfolio.push(d.data() as PortfolioItem);
-          });
-          if (livePortfolio.length > 0) {
-            setPortfolio(livePortfolio);
-            try {
-              localStorage.setItem('trevon_portfolio', JSON.stringify(livePortfolio));
-            } catch (e) {
-              console.warn(e);
+        // Real Projects (Shift, M-Duka, Nyana Hills)
+        const projSnap = await getDocs(collection(db, 'projects'));
+        const liveProjects: Project[] = [];
+        if (!projSnap.empty) {
+          for (const d of projSnap.docs) {
+            const data = d.data() as Project;
+            // Prune old legacy sample projects from Firestore
+            if (['proj-nyumbasync-phase2', 'proj-kipao-retail'].includes(data.id)) {
+              deleteDoc(doc(db, 'projects', data.id)).catch(() => {});
+            } else if (['proj-shift', 'proj-mduka', 'proj-nyana'].includes(data.id)) {
+              liveProjects.push(data);
             }
           }
-        } else {
-          for (const item of INITIAL_PORTFOLIO) {
-            await setDoc(doc(db, 'portfolio', item.id), item);
+        }
+        // Seed any missing real project
+        for (const initialP of INITIAL_PROJECTS) {
+          const exists = liveProjects.some((p) => p.id === initialP.id);
+          if (!exists) {
+            await setDoc(doc(db, 'projects', initialP.id), initialP);
+            liveProjects.push(initialP);
+          }
+        }
+        if (liveProjects.length > 0) {
+          setProjects(liveProjects);
+          try {
+            localStorage.setItem('trevon_projects', JSON.stringify(liveProjects));
+          } catch (e) {
+            console.warn(e);
+          }
+        }
+
+        // Real Portfolio (Shift, M-Duka, Nyana Hills only)
+        const portSnap = await getDocs(collection(db, 'portfolio'));
+        const livePortfolio: PortfolioItem[] = [];
+        if (!portSnap.empty) {
+          for (const d of portSnap.docs) {
+            const item = d.data() as PortfolioItem;
+            // Clean up any old mock portfolio items in Firestore
+            if (['port-1', 'port-2', 'port-3', 'port-4', 'port-5', 'port-6', 'port-afyanexus', 'port-apex-solar'].includes(item.id)) {
+              deleteDoc(doc(db, 'portfolio', item.id)).catch(() => {});
+            } else if (['port-shift', 'port-mduka', 'port-nyana-hills'].includes(item.id)) {
+              livePortfolio.push(item);
+            }
+          }
+        }
+        // Seed any missing real portfolio items
+        for (const realItem of INITIAL_PORTFOLIO) {
+          const exists = livePortfolio.some((p) => p.id === realItem.id);
+          if (!exists) {
+            await setDoc(doc(db, 'portfolio', realItem.id), realItem);
+            livePortfolio.push(realItem);
+          }
+        }
+        if (livePortfolio.length > 0) {
+          setPortfolio(livePortfolio);
+          try {
+            localStorage.setItem('trevon_portfolio', JSON.stringify(livePortfolio));
+          } catch (e) {
+            console.warn(e);
           }
         }
 
@@ -677,13 +795,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     });
 
-    const parsedBudget =
-      budget ||
-      (lead.budgetRange.includes('25k')
-        ? 25000
-        : lead.budgetRange.includes('10k')
-        ? 15000
-        : 7500);
+    const isKes = lead.budgetRange?.includes('KES');
+    const isEur = lead.budgetRange?.includes('EUR') || lead.budgetRange?.includes('€');
+    const isGbp = lead.budgetRange?.includes('GBP') || lead.budgetRange?.includes('£');
+    const projectCurrency = isKes
+      ? 'KES'
+      : isEur
+      ? 'EUR'
+      : isGbp
+      ? 'GBP'
+      : visitorCurrency || settings.currency || 'KES';
+
+    let fallbackBudget = 450000;
+    if (projectCurrency === 'USD') fallbackBudget = 3200;
+    else if (projectCurrency === 'EUR') fallbackBudget = 2900;
+    else if (projectCurrency === 'GBP') fallbackBudget = 2500;
+
+    const parsedBudget = budget || fallbackBudget;
 
     const targetEnd =
       targetDate ||
@@ -699,7 +827,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'active',
       templateId,
       budgetAmount: parsedBudget,
-      currency: 'USD',
+      currency: projectCurrency,
       startDate: new Date().toISOString().split('T')[0],
       targetEndDate: targetEnd,
       currentStageId: clonedStages[0].id,
@@ -713,7 +841,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           projectId,
           type: 'contract',
           title: `Master Services Agreement (${lead.name})`,
-          content: `### 1. Purpose\nEngagement between Trevon Creates and ${lead.name} for ${lead.projectType}.\n\n### 2. Commercial Investment\nTotal Fixed Investment: $${parsedBudget.toLocaleString()} USD.\nDeposit: 50% upon execution. Milestone 2: 50% upon delivery.\n\n### 3. IP Ownership\nAll source code and cloud infrastructure transfer upon final milestone settlement.`,
+          content: `### 1. Purpose\nEngagement between Trevon Creates and ${lead.name} for ${lead.projectType}.\n\n### 2. Commercial Investment\nTotal Fixed Investment: ${projectCurrency} ${parsedBudget.toLocaleString()}.\nDeposit: 50% upon execution. Milestone 2: 50% upon delivery.\n\n### 3. IP Ownership\nAll source code and cloud infrastructure transfer upon final milestone settlement.`,
           status: 'sent',
           createdAt: new Date().toISOString(),
         },
@@ -725,7 +853,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           number: `INV-2026-${Math.floor(100 + Math.random() * 900)}`,
           description: `${lead.projectType} — 50% Initial Mobilization Deposit`,
           amount: Math.round(parsedBudget * 0.5),
-          currency: 'USD',
+          currency: projectCurrency,
           status: 'sent',
           dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
           createdAt: new Date().toISOString(),
@@ -1519,7 +1647,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setReviews(INITIAL_REVIEWS);
     setLandingConfig(INITIAL_LANDING_CONFIG);
     setActivityLog(INITIAL_ACTIVITY);
-    setCurrentProjectId('proj-kipao-retail');
+    setCurrentProjectId('proj-shift');
   };
 
   return (
@@ -1532,6 +1660,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         theme,
         toggleTheme,
         setTheme,
+        toasts,
+        showToast,
+        dismissToast,
+        visitorCurrency,
+        setVisitorCurrency,
+        detectedRegion,
         currentUser,
         firebaseUser,
         firebaseAuthLoading,

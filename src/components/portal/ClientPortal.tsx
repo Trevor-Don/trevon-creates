@@ -3,7 +3,6 @@ import { useApp } from '../../store/AppContext';
 import { Badge } from '../common/Badge';
 import { Modal } from '../common/Modal';
 import { SecureDocumentModal } from '../secure/SecureDocumentModal';
-import { Task, Deliverable, Document, Invoice, Project } from '../../types';
 import {
   CheckCircle2,
   Clock,
@@ -30,7 +29,11 @@ import {
   Layers,
   HelpCircle,
   Download,
+  Star,
+  ThumbsUp,
+  Share2,
 } from 'lucide-react';
+import { Task, Deliverable, Document, Invoice, Project, ClientReview } from '../../types';
 
 export const ClientPortal: React.FC = () => {
   const {
@@ -44,15 +47,30 @@ export const ClientPortal: React.FC = () => {
     signDocument,
     payInvoice,
     submitChangeRequest,
+    services,
+    reviews,
+    submitClientReview,
     settings,
     setSurface,
     navigateTo,
+    showToast,
   } = useApp();
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'tasks' | 'trevor_tasks' | 'deliverables' | 'documents' | 'invoices' | 'updates' | 'changes'
+    'overview' | 'tasks' | 'trevor_tasks' | 'deliverables' | 'documents' | 'invoices' | 'updates' | 'changes' | 'reviews'
   >('overview');
+
+  // Client Review Form State
+  const [reviewService, setReviewService] = useState('');
+  const [reviewRating, setReviewRating] = useState(5);
+  const [hoverRating, setHoverRating] = useState<number | null>(null);
+  const [reviewHeadline, setReviewHeadline] = useState('');
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewWouldRecommend, setReviewWouldRecommend] = useState(true);
+  const [reviewIsSubmitting, setReviewIsSubmitting] = useState(false);
+  const [reviewSubmittedSuccess, setReviewSubmittedSuccess] = useState<ClientReview | null>(null);
+  const [copiedReviewText, setCopiedReviewText] = useState(false);
 
   // Mobile sidebar toggle
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -139,6 +157,7 @@ export const ClientPortal: React.FC = () => {
     e.preventDefault();
     if (!activeTaskModal) return;
     submitClientTask(currentProject.id, activeTaskModal.id, formInputs);
+    showToast('success', 'Task Submitted', `"${activeTaskModal.title}" response submitted for Trevor's review.`);
     setActiveTaskModal(null);
   };
 
@@ -146,6 +165,7 @@ export const ClientPortal: React.FC = () => {
     e.preventDefault();
     if (!changeDesc.trim()) return;
     submitChangeRequest(currentProject.id, changeDesc, Number(changeBudget), Number(changeDays));
+    showToast('success', 'Change Request Sent', 'Submitted for scope & budget review. Trevor will respond shortly.');
     setShowChangeModal(false);
     setChangeDesc('');
   };
@@ -406,6 +426,27 @@ export const ClientPortal: React.FC = () => {
                 <span>Change Requests</span>
               </div>
             </button>
+
+            {/* Reviews & Feedback */}
+            <button
+              onClick={() => {
+                setActiveTab('reviews');
+                setMobileMenuOpen(false);
+              }}
+              className={`w-full px-3 py-2.5 rounded-lg flex items-center justify-between transition-all cursor-pointer ${
+                activeTab === 'reviews'
+                  ? 'bg-[#FFAE00]/15 text-[#FFAE00] font-bold border border-[#FFAE00]/40 shadow-[0_0_12px_rgba(255,174,0,0.15)]'
+                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Star className="w-4 h-4 text-[#FFAE00]" />
+                <span>Rate &amp; Review Service</span>
+              </div>
+              <span className="px-1.5 py-0.5 rounded bg-[#FFAE00]/10 text-[#FFAE00] font-bold text-[10px] border border-[#FFAE00]/30">
+                5★
+              </span>
+            </button>
           </nav>
 
           {/* 4. Bottom Support & Concierge */}
@@ -475,6 +516,8 @@ export const ClientPortal: React.FC = () => {
                   ? 'Invoices & Payment Gateway'
                   : activeTab === 'updates'
                   ? 'Project Updates Feed'
+                  : activeTab === 'reviews'
+                  ? 'Rate Services & Verified Review'
                   : 'Scope Change Requests'}
               </h1>
             </div>
@@ -588,6 +631,31 @@ export const ClientPortal: React.FC = () => {
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Rate Experience & Google Business Sync Banner */}
+              <div className="p-5 rounded-xl bg-gradient-to-r from-[#080B09] via-black to-[#080B09] border border-[#FFAE00]/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-[#FFAE00]/15 border border-[#FFAE00]/30 flex items-center justify-center text-[#FFAE00]">
+                    <Star className="w-5 h-5 fill-[#FFAE00]" />
+                  </div>
+                  <div>
+                    <h3 className="font-heading font-bold text-white text-sm">
+                      Rate Your Service Experience &amp; Google Profile Sync
+                    </h3>
+                    <p className="text-xs text-neutral-400 font-sans">
+                      Leave a verified review for Trevor&apos;s deliverables. Help prospective partners discover our engineering craft.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setActiveTab('reviews')}
+                  className="px-4 py-2 rounded bg-[#FFAE00] hover:bg-white text-black font-heading font-bold text-xs flex items-center gap-1.5 shadow-[0_0_12px_rgba(255,174,0,0.3)] transition-all cursor-pointer whitespace-nowrap self-start sm:self-auto"
+                >
+                  <Star className="w-3.5 h-3.5 fill-black" />
+                  <span>Leave Verified Review</span>
+                </button>
               </div>
 
               {/* Action items banner if any */}
@@ -1117,6 +1185,340 @@ export const ClientPortal: React.FC = () => {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ========================================================
+              TAB: CLIENT REVIEWS & SERVICE EXPERIENCE FEEDBACK
+             ======================================================== */}
+          {activeTab === 'reviews' && (
+            <div className="space-y-8 max-w-4xl">
+              {/* Header Box */}
+              <div className="p-6 rounded-xl bg-[#080B09] border border-white/10 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs text-[#FFAE00] uppercase tracking-wider font-semibold">
+                    CLIENT REPUTATION &amp; EXPERIENCE FEEDBACK
+                  </span>
+                  <Badge label="GOOGLE PROFILE CONNECTED" variant="orange" />
+                </div>
+                <h2 className="font-heading text-xl font-bold text-white">
+                  Rate Trevor&apos;s Engineering Services
+                </h2>
+                <p className="text-xs text-neutral-300 font-sans leading-relaxed">
+                  Your feedback helps us continuously elevate delivery standards, and helps future clients on Google Business and our studio portfolio verify our craft.
+                </p>
+              </div>
+
+              {/* Review Submitted Banner / State */}
+              {reviewSubmittedSuccess ? (
+                <div className="p-8 rounded-xl bg-gradient-to-br from-[#080B09] via-black to-[#080B09] border border-[#00FF00]/50 shadow-[0_0_30px_rgba(0,255,0,0.15)] space-y-6 text-center">
+                  <div className="w-14 h-14 rounded-full bg-[#00FF00]/15 border border-[#00FF00]/40 mx-auto flex items-center justify-center text-[#00FF00]">
+                    <CheckCircle2 className="w-8 h-8" />
+                  </div>
+
+                  <div className="space-y-2 max-w-lg mx-auto">
+                    <h3 className="font-heading text-2xl font-bold text-white">
+                      Thank You, {currentUser.name}!
+                    </h3>
+                    <p className="text-xs text-neutral-300 font-sans leading-relaxed">
+                      Your review for <span className="text-[#00FF00] font-semibold">{reviewSubmittedSuccess.serviceName}</span> is saved and recorded.
+                    </p>
+                  </div>
+
+                  <div className="p-5 rounded-lg bg-black/60 border border-white/10 max-w-xl mx-auto text-left space-y-2 font-sans">
+                    <div className="flex items-center gap-1 text-[#FFAE00]">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Star key={i} className="w-4 h-4 fill-[#FFAE00]" />
+                      ))}
+                      <span className="font-mono text-xs text-neutral-400 ml-2">5.0 / 5.0</span>
+                    </div>
+                    <div className="font-heading font-bold text-sm text-white">
+                      &ldquo;{reviewSubmittedSuccess.headline}&rdquo;
+                    </div>
+                    <p className="text-xs text-neutral-300 italic">
+                      &ldquo;{reviewSubmittedSuccess.comment}&rdquo;
+                    </p>
+                  </div>
+
+                  {/* One-Click Google Business Profile Sync Action */}
+                  <div className="pt-2 max-w-md mx-auto space-y-3">
+                    <button
+                      onClick={() => {
+                        const quote = `"${reviewSubmittedSuccess.headline}" - ${reviewSubmittedSuccess.comment}`;
+                        navigator.clipboard.writeText(quote);
+                        setCopiedReviewText(true);
+                        const bizUrl = settings.googleBusinessProfileUrl || 'https://maps.app.goo.gl/trevoncreates';
+                        window.open(bizUrl, '_blank', 'noopener,noreferrer');
+                        setTimeout(() => setCopiedReviewText(false), 4000);
+                      }}
+                      className="w-full py-3 px-4 rounded-lg bg-[#FFAE00] hover:bg-white text-black font-heading font-bold text-xs flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,174,0,0.4)] transition-all cursor-pointer"
+                    >
+                      <Share2 className="w-4 h-4" />
+                      <span>{copiedReviewText ? 'Copied! Opening Google Business...' : 'Post to Trevor’s Google Business Profile'}</span>
+                    </button>
+
+                    <p className="font-mono text-[11px] text-neutral-400">
+                      Copies your review text to clipboard and opens Trevor&apos;s Google Maps page so you can paste with 1-click!
+                    </p>
+
+                    <button
+                      onClick={() => {
+                        setReviewSubmittedSuccess(null);
+                        setReviewHeadline('');
+                        setReviewComment('');
+                      }}
+                      className="text-xs font-mono text-neutral-400 hover:text-white underline pt-2 cursor-pointer"
+                    >
+                      Submit another review
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* The Review Submission Form */
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!reviewHeadline.trim() || !reviewComment.trim()) return;
+                    setReviewIsSubmitting(true);
+                    try {
+                      const res = await submitClientReview({
+                        clientId: currentUser.id,
+                        clientName: currentUser.name,
+                        clientEmail: currentUser.email,
+                        clientCompany: currentUser.company || currentProject.title,
+                        clientAvatar: currentUser.avatarUrl,
+                        projectId: currentProject.id,
+                        projectTitle: currentProject.title,
+                        serviceName: reviewService || currentProject.title,
+                        rating: reviewRating,
+                        headline: reviewHeadline.trim(),
+                        comment: reviewComment.trim(),
+                        wouldRecommend: reviewWouldRecommend,
+                        googleBusinessReady: true,
+                        status: 'published',
+                        verifiedClient: true,
+                      });
+                      setReviewSubmittedSuccess(res);
+                      showToast('success', '5★ Review Submitted', 'Thank you! Your testimonial has been published to Trevor’s portfolio & Google Business.');
+                    } catch (err) {
+                      console.error('Error submitting review:', err);
+                    } finally {
+                      setReviewIsSubmitting(false);
+                    }
+                  }}
+                  className="p-6 rounded-xl bg-[#080B09] border border-white/10 space-y-6 font-sans text-xs"
+                >
+                  {/* Service selector */}
+                  <div className="space-y-1.5">
+                    <label className="font-mono text-neutral-300 block">
+                      Select Service Offering Delivered *
+                    </label>
+                    <select
+                      value={reviewService}
+                      onChange={(e) => setReviewService(e.target.value)}
+                      className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#FFAE00] focus:outline-none"
+                    >
+                      <option value="">{currentProject.title} (Current Active Project)</option>
+                      {services.map((s) => (
+                        <option key={s.id} value={s.title}>
+                          {s.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Interactive Star Rating */}
+                  <div className="space-y-2">
+                    <label className="font-mono text-neutral-300 block">
+                      Overall Engineering &amp; Delivery Rating *
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5">
+                        {[1, 2, 3, 4, 5].map((star) => {
+                          const isFilled = (hoverRating !== null ? hoverRating : reviewRating) >= star;
+                          return (
+                            <button
+                              key={star}
+                              type="button"
+                              onClick={() => setReviewRating(star)}
+                              onMouseEnter={() => setHoverRating(star)}
+                              onMouseLeave={() => setHoverRating(null)}
+                              className="p-1 rounded hover:scale-110 transition-transform cursor-pointer"
+                              title={`${star} Star${star > 1 ? 's' : ''}`}
+                            >
+                              <Star
+                                className={`w-6 h-6 transition-colors ${
+                                  isFilled
+                                    ? 'fill-[#FFAE00] text-[#FFAE00] drop-shadow-[0_0_8px_rgba(255,174,0,0.5)]'
+                                    : 'text-neutral-600'
+                                }`}
+                              />
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <span className="font-mono text-xs text-[#FFAE00] font-bold">
+                        {reviewRating === 5 && '5★ Exceptional Delivery & Architecture'}
+                        {reviewRating === 4 && '4★ Great Performance & Delivery'}
+                        {reviewRating === 3 && '3★ Satisfactory Project Delivery'}
+                        {reviewRating === 2 && '2★ Needs Polish'}
+                        {reviewRating === 1 && '1★ Unsatisfactory'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Review Headline */}
+                  <div className="space-y-1.5">
+                    <label className="font-mono text-neutral-300 block">
+                      Review Headline / Key Takeaway *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={reviewHeadline}
+                      onChange={(e) => setReviewHeadline(e.target.value)}
+                      placeholder="e.g. Sub-250ms latency on Cloud Run — Absolute engineering brilliance"
+                      className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-sans text-xs focus:border-[#FFAE00] focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Review Detailed Body */}
+                  <div className="space-y-1.5">
+                    <label className="font-mono text-neutral-300 block">
+                      Detailed Experience &amp; Impact *
+                    </label>
+                    <textarea
+                      rows={4}
+                      required
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                      placeholder="Describe the speed of execution, architectural stability, communication ergonomics, or business impact on your team..."
+                      className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-sans text-xs leading-relaxed focus:border-[#FFAE00] focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Recommendation toggle */}
+                  <div className="flex items-center justify-between p-3.5 rounded-lg bg-black border border-white/10">
+                    <div>
+                      <div className="font-heading font-bold text-white text-xs">
+                        Would you recommend Trevor to other founders / businesses?
+                      </div>
+                      <div className="text-[11px] text-neutral-400 font-mono">
+                        Included in your verified public testimonial badge.
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-2 cursor-pointer font-mono text-xs">
+                      <input
+                        type="checkbox"
+                        checked={reviewWouldRecommend}
+                        onChange={(e) => setReviewWouldRecommend(e.target.checked)}
+                        className="rounded bg-black border-white/20 text-[#00FF00] focus:ring-0"
+                      />
+                      <span className={reviewWouldRecommend ? 'text-[#00FF00] font-bold' : 'text-neutral-400'}>
+                        {reviewWouldRecommend ? 'YES, HIGHLY' : 'NEUTRAL'}
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* Google Business Profile explanation */}
+                  <div className="p-4 rounded-lg bg-[#FFAE00]/10 border border-[#FFAE00]/30 flex items-start gap-3 text-xs">
+                    <Star className="w-4 h-4 text-[#FFAE00] shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <div className="font-heading font-bold text-white">
+                        Google Business Profile Verification
+                      </div>
+                      <p className="text-neutral-300 font-sans leading-relaxed">
+                        After submitting here, you will also be given a direct 1-click shortcut to cross-post this review to Trevor&apos;s verified Google Business profile on Google Maps.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Submit Button */}
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={reviewIsSubmitting}
+                      className="px-6 py-2.5 rounded bg-[#00FF00] hover:bg-white text-black font-heading font-bold text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(0,255,0,0.3)] transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <Star className="w-3.5 h-3.5 fill-black" />
+                      <span>{reviewIsSubmitting ? 'Recording Review...' : 'Submit Official Review'}</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Your Previously Submitted Reviews */}
+              <div className="space-y-4 pt-4 border-t border-white/10">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-heading text-base font-bold text-white">
+                    Your Verified Reviews History
+                  </h3>
+                  <span className="font-mono text-xs text-neutral-400">
+                    {reviews.filter((r) => r.clientId === currentUser.id || r.clientEmail === currentUser.email).length} Reviews On Record
+                  </span>
+                </div>
+
+                {reviews
+                  .filter((r) => r.clientId === currentUser.id || r.clientEmail === currentUser.email)
+                  .map((rev) => (
+                    <div
+                      key={rev.id}
+                      className="p-5 rounded-xl bg-[#080B09] border border-white/10 space-y-3 font-sans"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-0.5 text-[#FFAE00]">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <Star
+                                key={i}
+                                className={`w-3.5 h-3.5 ${i < rev.rating ? 'fill-[#FFAE00]' : 'text-neutral-700'}`}
+                              />
+                            ))}
+                          </div>
+                          <span className="font-mono text-xs text-neutral-400">
+                            • {rev.serviceName}
+                          </span>
+                        </div>
+
+                        <Badge
+                          label={
+                            rev.status === 'featured'
+                              ? 'FEATURED ON PORTFOLIO'
+                              : rev.status === 'published'
+                              ? 'PUBLISHED'
+                              : 'PENDING'
+                          }
+                          variant={rev.status === 'featured' ? 'orange' : 'green'}
+                        />
+                      </div>
+
+                      <div className="font-heading font-bold text-sm text-white">
+                        &ldquo;{rev.headline}&rdquo;
+                      </div>
+                      <p className="text-xs text-neutral-300 leading-relaxed italic">
+                        &ldquo;{rev.comment}&rdquo;
+                      </p>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-white/5 font-mono text-[11px] text-neutral-500">
+                        <span>Submitted on {new Date(rev.createdAt).toLocaleDateString()}</span>
+
+                        {settings.googleBusinessProfileUrl && (
+                          <a
+                            href={settings.googleBusinessProfileUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[#FFAE00] hover:underline flex items-center gap-1"
+                          >
+                            <span>View on Google Profile</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+              </div>
             </div>
           )}
         </div>

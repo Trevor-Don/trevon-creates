@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../store/AppContext';
 import { PortfolioItem } from '../../types';
 import { Badge } from '../common/Badge';
 import { CaseStudyModal } from './CaseStudyModal';
+import { detectVisitorRegion, SUPPORTED_CURRENCIES, formatRegionalPrice } from '../../utils/currency';
 import {
   Terminal,
   ArrowUpRight,
@@ -20,16 +21,51 @@ import {
   Palette,
   Layout,
   Smartphone,
+  Star,
+  DollarSign,
+  Package,
+  Check,
+  MapPin,
 } from 'lucide-react';
 
 interface PublicHomeProps {
-  onOpenContact: () => void;
+  onOpenContact: (packageId?: string) => void;
   onExploreWork: () => void;
 }
 
 export const PublicHome: React.FC<PublicHomeProps> = ({ onOpenContact, onExploreWork }) => {
-  const { portfolio, testimonials, switchUser, landingConfig } = useApp();
+  const { portfolio, testimonials, switchUser, landingConfig, services, pricingPackages, reviews, settings } = useApp();
   const [selectedCaseStudy, setSelectedCaseStudy] = useState<PortfolioItem | null>(null);
+
+  // Regional currency state
+  const [visitorCurrency, setVisitorCurrency] = useState('KES');
+  const [detectedRegion, setDetectedRegion] = useState({ flag: '🇰🇪', regionName: 'Kenya & East Africa' });
+
+  useEffect(() => {
+    const detected = detectVisitorRegion();
+    setDetectedRegion({ flag: detected.flag, regionName: detected.regionName });
+    const saved = localStorage.getItem('trevon_visitor_currency');
+    if (saved && SUPPORTED_CURRENCIES[saved]) {
+      setVisitorCurrency(saved);
+    } else {
+      setVisitorCurrency(detected.currencyCode);
+    }
+
+    const handleCurrencyChange = () => {
+      const cur = localStorage.getItem('trevon_visitor_currency');
+      if (cur && SUPPORTED_CURRENCIES[cur]) {
+        setVisitorCurrency(cur);
+      }
+    };
+    window.addEventListener('trevon_currency_changed', handleCurrencyChange);
+    return () => window.removeEventListener('trevon_currency_changed', handleCurrencyChange);
+  }, []);
+
+  const handleSelectCurrency = (code: string) => {
+    setVisitorCurrency(code);
+    localStorage.setItem('trevon_visitor_currency', code);
+    window.dispatchEvent(new Event('trevon_currency_changed'));
+  };
 
   // Compute featured work from landingConfig selection if specified, else featured or published items
   const featuredWork = React.useMemo(() => {
@@ -74,8 +110,8 @@ export const PublicHome: React.FC<PublicHomeProps> = ({ onOpenContact, onExplore
                 <h1 className="font-heading text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-[1.1]">
                   {landingConfig?.headlineMain || 'DIGITAL VISIONS INTO'} <br />
                   <span
-                    style={{ color: '#000000' }}
-                    className="text-transparent bg-clip-text bg-gradient-to-r from-[#00FF00] via-[#8aff8a] to-[#00FF00]"
+                    style={{ color: '#00a310' }}
+                    className="font-bold"
                   >
                     {landingConfig?.headlineHighlight || 'SLEEK, FUNCTIONAL'}
                   </span>{' '}
@@ -101,7 +137,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({ onOpenContact, onExplore
               {/* Action CTAs */}
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <button
-                  onClick={onOpenContact}
+                  onClick={() => onOpenContact()}
                   className="px-6 py-3 rounded-[4px] bg-[#00FF00] hover:bg-white text-black font-heading font-bold text-xs tracking-wide shadow-[0_0_24px_rgba(0,255,0,0.4)] hover:shadow-[0_0_32px_rgba(0,255,0,0.7)] flex items-center gap-2 transition-all cursor-pointer"
                 >
                   <span>Start a Project</span>
@@ -149,7 +185,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({ onOpenContact, onExplore
               <div className="relative w-full max-w-[340px] rounded-2xl overflow-hidden bg-[#080B09] border-2 border-[#00FF00]/40 shadow-[0_0_35px_rgba(0,255,0,0.18)] group">
                 <div className="relative aspect-[3/4] overflow-hidden">
                   <img
-                    src="/trevor-portrait.jpg"
+                    src={landingConfig?.founderPhotoUrl || '/trevor-portrait.jpg'}
                     alt={`${landingConfig?.founderName || 'Trevor Don'} — ${landingConfig?.founderRole || 'Systems Architect & Senior UI/UX Designer'}`}
                     onError={(e) => {
                       (e.currentTarget as HTMLImageElement).src = '/trevor-photo.jpg';
@@ -268,93 +304,108 @@ export const PublicHome: React.FC<PublicHomeProps> = ({ onOpenContact, onExplore
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Card 1 */}
-          <div className="p-6 rounded-lg bg-[#080B09] border border-white/10 hover:border-white/20 transition-all space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="w-10 h-10 rounded bg-white/5 border border-white/10 flex items-center justify-center text-[#00FF00]">
-                <Cpu className="w-5 h-5" />
+          {(services && services.filter((s) => s.active).length > 0
+            ? services.filter((s) => s.active)
+            : [
+                {
+                  id: 's1',
+                  title: 'High-Concurrency Architecture & Cloud Run',
+                  description:
+                    'Designing containerized systems that auto-scale to zero. Low memory footprints, stateless microservices, idempotent message processing, and strict multi-tenant isolation.',
+                  tagline: 'Google Cloud Run containers scaling from 0 with automated Cloudflare routing',
+                  deliverables: ['Docker Container', 'Cloud Run', 'Cloudflare DNS', 'Zero-Scale Setup'],
+                  icon: 'Cpu',
+                  popular: true,
+                  startingPriceKES: 200000,
+                  startingPriceUSD: 1500,
+                  timeline: '2 - 4 Weeks',
+                },
+                {
+                  id: 's2',
+                  title: 'Point-of-Sale (POS) & Edge Delta Sync',
+                  description:
+                    'Offline-tolerant systems designed for volatile power and network grids. Bidirectional delta synchronization, vector clock conflict resolution, and hardware printer bridges.',
+                  tagline: 'Offline-First registers with SQLite sync and M-Pesa STK billing',
+                  deliverables: ['SQLite Edge', 'Vector Clocks', 'ESC/POS Thermal', 'PostgreSQL Backend'],
+                  icon: 'Database',
+                  popular: false,
+                  startingPriceKES: 450000,
+                  startingPriceUSD: 3200,
+                  timeline: '6 - 8 Weeks',
+                },
+                {
+                  id: 's3',
+                  title: 'Full-Stack Web & Dedicated Client Portals',
+                  description:
+                    'Bespoke customer onboarding engines, contract e-signing, automated milestone billing, and stage-by-stage task handoffs engineered to replace email chaos.',
+                  tagline: 'Type-safe web platforms with instant page loads and zero bloat',
+                  deliverables: ['TypeScript Strict Codebase', 'Client Portal', 'Next.js 14', 'Magic Link Auth'],
+                  icon: 'Layers',
+                  popular: true,
+                  startingPriceKES: 350000,
+                  startingPriceUSD: 2500,
+                  timeline: '4 - 6 Weeks',
+                },
+                {
+                  id: 's4',
+                  title: 'FinTech & Automated Reconciliation',
+                  description:
+                    'M-Pesa Daraja STK Push callbacks, Paystack webhooks, and real-time ledger accounting. Idempotent webhook queues with zero dropped transactions.',
+                  tagline: 'Unbreakable payment webhooks and audit trail ledgers',
+                  deliverables: ['M-Pesa STK', 'Paystack', 'Webhook Queues', 'Audit Trails'],
+                  icon: 'Zap',
+                  popular: false,
+                  startingPriceKES: 250000,
+                  startingPriceUSD: 1800,
+                  timeline: '3 - 4 Weeks',
+                },
+              ]
+          ).map((s) => (
+            <div
+              key={s.id}
+              className="p-6 rounded-lg bg-[#080B09] border border-white/10 hover:border-white/20 transition-all space-y-4"
+            >
+              <div className="flex items-center justify-between">
+                <div className="w-10 h-10 rounded bg-white/5 border border-white/10 flex items-center justify-center text-[#00FF00]">
+                  {s.icon === 'Layout' && <Layout className="w-5 h-5" />}
+                  {s.icon === 'Database' && <Database className="w-5 h-5 text-[#FFAE00]" />}
+                  {s.icon === 'Zap' && <Zap className="w-5 h-5" />}
+                  {s.icon === 'Cpu' && <Cpu className="w-5 h-5" />}
+                  {s.icon === 'Smartphone' && <Smartphone className="w-5 h-5" />}
+                  {!['Layout', 'Database', 'Zap', 'Cpu', 'Smartphone'].includes(s.icon) && (
+                    <Layers className="w-5 h-5 text-cyan-400" />
+                  )}
+                </div>
+                {s.popular && <Badge label="CORE CAPABILITY" variant="green" />}
               </div>
-              <Badge label="CORE CAPABILITY" variant="green" />
-            </div>
-            <h3 className="font-heading text-lg font-bold text-white">
-              High-Concurrency Architecture & Cloud Run
-            </h3>
-            <p className="text-sm text-neutral-400 leading-relaxed font-sans">
-              Designing containerized systems that auto-scale to zero. Low memory footprints, stateless microservices, idempotent message processing, and strict multi-tenant isolation.
-            </p>
-            <div className="pt-2 flex flex-wrap gap-2 text-[11px] font-mono text-neutral-400">
-              <span className="px-2 py-0.5 rounded bg-black border border-white/5">Docker</span>
-              <span className="px-2 py-0.5 rounded bg-black border border-white/5">Cloud Run</span>
-              <span className="px-2 py-0.5 rounded bg-black border border-white/5">Cloudflare DNS</span>
-              <span className="px-2 py-0.5 rounded bg-black border border-white/5">Zero-Scale</span>
-            </div>
-          </div>
-
-          {/* Card 2 */}
-          <div className="p-6 rounded-lg bg-[#080B09] border border-white/10 hover:border-white/20 transition-all space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="w-10 h-10 rounded bg-white/5 border border-white/10 flex items-center justify-center text-[#FFAE00]">
-                <Database className="w-5 h-5" />
+              <div>
+                <h3 className="font-heading text-lg font-bold text-white">{s.title}</h3>
+                {s.tagline && (
+                  <p className="font-sans text-xs text-[#00FF00] mt-0.5">{s.tagline}</p>
+                )}
               </div>
-              <Badge label="OFFLINE-FIRST" variant="orange" />
+              <p className="text-sm text-neutral-400 leading-relaxed font-sans">
+                {s.description}
+              </p>
+              {s.deliverables && s.deliverables.length > 0 && (
+                <div className="pt-2 flex flex-wrap gap-2 text-[11px] font-mono text-neutral-400">
+                  {s.deliverables.map((del, dIdx) => (
+                    <span key={dIdx} className="px-2 py-0.5 rounded bg-black border border-white/5">
+                      {del}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {s.startingPriceKES && (
+                <div className="pt-3 border-t border-white/5 flex items-center justify-between text-xs font-mono">
+                  <span className="text-neutral-400">
+                    From <span className="text-[#00FF00] font-bold">{formatRegionalPrice(s.startingPriceKES, visitorCurrency, { priceUSD: s.startingPriceUSD, includeCode: true })}</span>
+                  </span>
+                  <span className="text-[#FFAE00]">{s.timeline}</span>
+                </div>
+              )}
             </div>
-            <h3 className="font-heading text-lg font-bold text-white">
-              Point-of-Sale (POS) & Edge Delta Sync
-            </h3>
-            <p className="text-sm text-neutral-400 leading-relaxed font-sans">
-              Offline-tolerant systems designed for volatile power and network grids. Bidirectional delta synchronization, vector clock conflict resolution, and hardware printer bridges.
-            </p>
-            <div className="pt-2 flex flex-wrap gap-2 text-[11px] font-mono text-neutral-400">
-              <span className="px-2 py-0.5 rounded bg-black border border-white/5">SQLite Edge</span>
-              <span className="px-2 py-0.5 rounded bg-black border border-white/5">Vector Clocks</span>
-              <span className="px-2 py-0.5 rounded bg-black border border-white/5">ESC/POS Thermal</span>
-              <span className="px-2 py-0.5 rounded bg-black border border-white/5">PostgreSQL</span>
-            </div>
-          </div>
-
-          {/* Card 3 */}
-          <div className="p-6 rounded-lg bg-[#080B09] border border-white/10 hover:border-white/20 transition-all space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="w-10 h-10 rounded bg-white/5 border border-white/10 flex items-center justify-center text-cyan-400">
-                <Layers className="w-5 h-5" />
-              </div>
-              <Badge label="FULL STACK" variant="cyan" />
-            </div>
-            <h3 className="font-heading text-lg font-bold text-white">
-              Full-Stack Web & Dedicated Client Portals
-            </h3>
-            <p className="text-sm text-neutral-400 leading-relaxed font-sans">
-              Bespoke customer onboarding engines, contract e-signing, automated milestone billing, and stage-by-stage task handoffs engineered to replace email chaos.
-            </p>
-            <div className="pt-2 flex flex-wrap gap-2 text-[11px] font-mono text-neutral-400">
-              <span className="px-2 py-0.5 rounded bg-black border border-white/5">Next.js 14</span>
-              <span className="px-2 py-0.5 rounded bg-black border border-white/5">Tailwind CSS</span>
-              <span className="px-2 py-0.5 rounded bg-black border border-white/5">Client Portals</span>
-              <span className="px-2 py-0.5 rounded bg-black border border-white/5">Magic Link Auth</span>
-            </div>
-          </div>
-
-          {/* Card 4 */}
-          <div className="p-6 rounded-lg bg-[#080B09] border border-white/10 hover:border-white/20 transition-all space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="w-10 h-10 rounded bg-white/5 border border-white/10 flex items-center justify-center text-[#00FF00]">
-                <Zap className="w-5 h-5" />
-              </div>
-              <Badge label="INTEGRATION" variant="green" />
-            </div>
-            <h3 className="font-heading text-lg font-bold text-white">
-              FinTech & Automated Reconciliation
-            </h3>
-            <p className="text-sm text-neutral-400 leading-relaxed font-sans">
-              M-Pesa Daraja STK Push callbacks, Paystack webhooks, and real-time ledger accounting. Idempotent webhook queues with zero dropped transactions.
-            </p>
-            <div className="pt-2 flex flex-wrap gap-2 text-[11px] font-mono text-neutral-400">
-              <span className="px-2 py-0.5 rounded bg-black border border-white/5">M-Pesa STK</span>
-              <span className="px-2 py-0.5 rounded bg-black border border-white/5">Paystack</span>
-              <span className="px-2 py-0.5 rounded bg-black border border-white/5">Webhook Queues</span>
-              <span className="px-2 py-0.5 rounded bg-black border border-white/5">Audit Trails</span>
-            </div>
-          </div>
+          ))}
         </div>
       </section>
 
@@ -452,8 +503,8 @@ export const PublicHome: React.FC<PublicHomeProps> = ({ onOpenContact, onExplore
             <div className="md:col-span-4 flex justify-center">
               <div className="relative w-full max-w-[280px] aspect-[3/4] rounded-xl overflow-hidden border-2 border-[#00FF00]/50 shadow-[0_0_30px_rgba(0,255,0,0.18)] group">
                 <img
-                  src="/trevor-portrait.jpg"
-                  alt="Trevor Don — Systems Architect & Senior UI/UX Designer"
+                  src={landingConfig?.founderPhotoUrl || '/trevor-portrait.jpg'}
+                  alt={`${landingConfig?.founderName || 'Trevor Don'} — ${landingConfig?.founderRole || 'Systems Architect & Senior UI/UX Designer'}`}
                   onError={(e) => {
                     (e.currentTarget as HTMLImageElement).src = '/trevor-photo.jpg';
                   }}
@@ -552,7 +603,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({ onOpenContact, onExplore
                   Frontline &amp; Mobile-First Ergonomics
                 </h4>
                 <p className="text-xs text-neutral-300 font-sans leading-relaxed">
-                  Engineering user flows for real humans in high-speed, noisy settings: cash registers (Kipao), event stall dispatchers (Shift), and mobile shoppers (Nyana Hills). Thumb-zone hit targets, reduced click depths, and sub-second task completion.
+                  Engineering user flows for real humans in high-speed, noisy settings: offline registers (M-Duka), event stall dispatchers (Shift), and mobile shoppers (Nyana Hills). Thumb-zone hit targets, reduced click depths, and sub-second task completion.
                 </p>
               </div>
 
@@ -584,7 +635,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({ onOpenContact, onExplore
               </div>
 
               <button
-                onClick={onOpenContact}
+                onClick={() => onOpenContact()}
                 className="px-4 py-2 rounded bg-[#00FF00] hover:bg-white text-black font-heading font-bold text-xs shrink-0 flex items-center gap-1.5 transition-all shadow-[0_0_12px_rgba(0,255,0,0.3)] cursor-pointer"
               >
                 <span>Hire Trevor for UI/UX &amp; Engineering</span>
@@ -659,17 +710,166 @@ export const PublicHome: React.FC<PublicHomeProps> = ({ onOpenContact, onExplore
         </div>
       </section>
 
-      {/* 6. FOUNDER TESTIMONIALS */}
+      {/* 5b. FIXED-SCOPE SPRINT PACKAGES & PRICING */}
       <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-        <div className="flex items-center justify-between border-b border-white/10 pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-white/10 pb-4">
           <div>
             <div className="font-mono text-xs text-[#00FF00] uppercase tracking-wider mb-1">
-              CLIENT TESTIMONIALS &amp; ENDORSEMENTS
+              FIXED-PRICE INVESTMENT &amp; DELIVERY SPRINTS
+            </div>
+            <h2 className="font-heading text-2xl sm:text-3xl font-bold text-white">
+              Transparent Pricing Packages
+            </h2>
+          </div>
+          <p className="text-xs font-mono text-neutral-400 max-w-sm">
+            Predictable scope, zero hidden billable hours, and milestone-backed engineering deliverables.
+          </p>
+        </div>
+
+        {/* Regional Currency Engine Bar */}
+        <div className="p-4 rounded-xl bg-[#080B09] border border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs font-mono">
+          <div className="flex items-center gap-2 text-neutral-300">
+            <span className="text-base">{detectedRegion.flag}</span>
+            <span className="text-neutral-400">Regional Currency:</span>
+            <span className="text-[#00FF00] font-bold">{SUPPORTED_CURRENCIES[visitorCurrency]?.label || visitorCurrency}</span>
+            <span className="text-neutral-500 hidden sm:inline">• Detected from your location ({detectedRegion.regionName})</span>
+          </div>
+
+          <div className="flex items-center flex-wrap gap-1.5">
+            <span className="text-[11px] text-neutral-500 mr-1">Switch:</span>
+            {['KES', 'USD', 'EUR', 'GBP', 'CAD', 'AUD'].map((code) => {
+              const curInfo = SUPPORTED_CURRENCIES[code];
+              const isSelected = visitorCurrency === code;
+              return (
+                <button
+                  key={code}
+                  onClick={() => handleSelectCurrency(code)}
+                  className={`px-2.5 py-1 rounded text-[11px] font-mono transition-all cursor-pointer flex items-center gap-1 ${
+                    isSelected
+                      ? 'bg-[#00FF00] text-black font-bold shadow-[0_0_10px_rgba(0,255,0,0.3)]'
+                      : 'bg-white/5 hover:bg-white/10 text-neutral-300 border border-white/10 hover:border-white/20'
+                  }`}
+                >
+                  <span>{curInfo.flag}</span>
+                  <span>{code}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {(pricingPackages && pricingPackages.filter((p) => p.active).length > 0
+            ? pricingPackages.filter((p) => p.active)
+            : []
+          ).map((pkg) => (
+            <div
+              key={pkg.id}
+              className={`p-6 rounded-xl bg-[#080B09] border flex flex-col justify-between transition-all space-y-6 ${
+                pkg.highlight
+                  ? 'border-[#00FF00]/50 shadow-[0_0_25px_rgba(0,255,0,0.12)] ring-1 ring-[#00FF00]/30'
+                  : 'border-white/10 hover:border-white/20'
+              }`}
+            >
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  {pkg.badge && (
+                    <span
+                      className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold tracking-wider ${
+                        pkg.highlight
+                          ? 'bg-[#00FF00]/20 text-[#00FF00] border border-[#00FF00]/40'
+                          : 'bg-[#FFAE00]/15 text-[#FFAE00] border border-[#FFAE00]/30'
+                      }`}
+                    >
+                      {pkg.badge}
+                    </span>
+                  )}
+                  <span className="font-mono text-[11px] text-neutral-400">
+                    {pkg.deliveryTime}
+                  </span>
+                </div>
+
+                <div>
+                  <h3 className="font-heading text-xl font-bold text-white">{pkg.name}</h3>
+                  <p className="text-xs text-neutral-300 font-sans mt-1 leading-relaxed">
+                    {pkg.description}
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-lg bg-black border border-white/10 space-y-1">
+                  <div className="font-mono text-2xl font-bold text-[#00FF00]">
+                    {formatRegionalPrice(pkg.priceKES, visitorCurrency, { priceUSD: pkg.priceUSD, includeCode: true })}
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] font-mono text-neutral-400">
+                    {visitorCurrency !== 'KES' ? (
+                      <span>Studio Base: KES {pkg.priceKES?.toLocaleString()}</span>
+                    ) : (
+                      <span>${pkg.priceUSD?.toLocaleString()} USD equivalent</span>
+                    )}
+                    <span className="text-neutral-500">• {pkg.billingPeriod}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-white/10">
+                  <div className="font-mono text-[10px] text-neutral-400 uppercase tracking-wider">
+                    WHAT&apos;S INCLUDED:
+                  </div>
+                  <ul className="space-y-1.5 font-sans text-xs text-neutral-300">
+                    {pkg.features.map((feat, fIdx) => (
+                      <li key={fIdx} className="flex items-start gap-2">
+                        <Check className="w-3.5 h-3.5 text-[#00FF00] shrink-0 mt-0.5" />
+                        <span>{feat}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-white/10 space-y-2">
+                <button
+                  onClick={() => onOpenContact(pkg.id)}
+                  className={`w-full py-2.5 px-4 rounded-lg font-heading font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    pkg.highlight
+                      ? 'bg-[#00FF00] hover:bg-white text-black shadow-[0_0_15px_rgba(0,255,0,0.4)]'
+                      : 'bg-white/10 hover:bg-white text-white hover:text-black border border-white/20'
+                  }`}
+                >
+                  <span>Book This Sprint</span>
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </button>
+                <div className="text-center font-mono text-[10px] text-neutral-500">
+                  {pkg.depositRequiredPercent}% Upfront Deposit • Milestone Deliverables
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 6. FOUNDER TESTIMONIALS */}
+      <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-white/10 pb-4">
+          <div>
+            <div className="font-mono text-xs text-[#00FF00] uppercase tracking-wider mb-1">
+              VERIFIED CLIENT REVIEWS &amp; REPUTATION
             </div>
             <h2 className="font-heading text-2xl font-bold text-white">
               Client Founders on Trevor&apos;s Delivery
             </h2>
           </div>
+
+          {settings.googleBusinessProfileUrl && (
+            <a
+              href={settings.googleBusinessProfileUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs font-mono text-[#FFAE00] hover:underline flex items-center gap-1.5"
+            >
+              <Star className="w-3.5 h-3.5 fill-[#FFAE00]" />
+              <span>Verified Google Business Reviews</span>
+              <ArrowUpRight className="w-3 h-3" />
+            </a>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -679,19 +879,32 @@ export const PublicHome: React.FC<PublicHomeProps> = ({ onOpenContact, onExplore
               className="p-6 rounded-lg bg-[#080B09] border border-white/10 flex flex-col justify-between space-y-6"
             >
               <div className="space-y-4">
-                <Quote className="w-6 h-6 text-[#00FF00]/40" />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-0.5 text-[#FFAE00]">
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Star key={s} className="w-3.5 h-3.5 fill-[#FFAE00]" />
+                    ))}
+                  </div>
+                  <span className="px-1.5 py-0.2 rounded bg-[#00FF00]/10 text-[#00FF00] border border-[#00FF00]/30 font-mono text-[9px] font-bold">
+                    VERIFIED CLIENT
+                  </span>
+                </div>
                 <p className="text-xs text-neutral-300 leading-relaxed font-sans italic">
                   &ldquo;{t.quote}&rdquo;
                 </p>
               </div>
 
               <div className="flex items-center gap-3 pt-4 border-t border-white/5">
-                {t.avatar && (
+                {t.avatar ? (
                   <img
                     src={t.avatar}
                     alt={t.clientName}
                     className="w-9 h-9 rounded-full object-cover border border-[#00FF00]/40"
                   />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center font-heading font-bold text-white text-xs">
+                    {t.clientName.charAt(0)}
+                  </div>
                 )}
                 <div>
                   <h4 className="font-heading text-xs font-bold text-white">{t.clientName}</h4>
@@ -721,7 +934,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({ onOpenContact, onExplore
 
           <div className="pt-2 flex flex-wrap items-center justify-center gap-4">
             <button
-              onClick={onOpenContact}
+              onClick={() => onOpenContact()}
               className="px-8 py-3.5 rounded bg-[#00FF00] hover:bg-white text-black font-heading font-bold text-sm shadow-[0_0_24px_rgba(0,255,0,0.5)] transition-all cursor-pointer flex items-center gap-2"
             >
               <span>Transmit Project Inquiry</span>

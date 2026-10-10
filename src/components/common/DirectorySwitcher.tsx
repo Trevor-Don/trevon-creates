@@ -25,7 +25,7 @@ export const DirectorySwitcher: React.FC<DirectorySwitcherProps> = ({ isOpen, on
       path: '/work',
       label: '/work',
       title: 'Verified Production Architectures',
-      desc: 'Case studies catalog (Shift, M-Duka, Nyana Hills Entreprices, Kipao Retail OS).',
+      desc: 'Case studies catalog (Shift, M-Duka, and Nyana Hills Storefront).',
       icon: FileCode2,
       badge: 'PUBLIC',
       badgeColor: 'border-white/20 text-neutral-300',

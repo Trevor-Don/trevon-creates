@@ -3,7 +3,7 @@ import { useApp } from '../../store/AppContext';
 import { Badge } from '../common/Badge';
 import { Modal } from '../common/Modal';
 import { SecureDocumentModal } from '../secure/SecureDocumentModal';
-import { Lead, Project, Task, LeadStatus, Document, Invoice } from '../../types';
+import { Lead, Project, Task, LeadStatus, Document, Invoice, StudioService, PricingPackage, ClientReview } from '../../types';
 import {
   Shield,
   Users,
@@ -34,7 +34,29 @@ import {
   CreditCard,
   FileCheck,
   RefreshCw,
+  Star,
+  Tag,
+  Package,
+  Trash2,
+  Edit3,
+  ThumbsUp,
+  Heart,
+  MapPin,
+  Share2,
+  Cpu,
+  Database,
+  Layout,
+  Smartphone,
+  Code,
+  Zap,
+  Server,
+  Upload,
+  Image as ImageIcon,
+  Camera,
+  Calculator,
+  CheckCheck,
 } from 'lucide-react';
+import { SUPPORTED_CURRENCIES, formatRegionalPrice } from '../../utils/currency';
 
 export const AdminPortal: React.FC = () => {
   const {
@@ -57,6 +79,17 @@ export const AdminPortal: React.FC = () => {
     templates,
     portfolio,
     updatePortfolioItem,
+    services,
+    updateService,
+    addService,
+    deleteService,
+    pricingPackages,
+    updatePricingPackage,
+    addPricingPackage,
+    deletePricingPackage,
+    reviews,
+    updateReviewStatus,
+    deleteReview,
     landingConfig,
     updateLandingConfig,
     firestoreConnected,
@@ -66,11 +99,12 @@ export const AdminPortal: React.FC = () => {
     switchUser,
     navigateTo,
     setSurface,
+    showToast,
   } = useApp();
 
   // Navigation tab
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'leads' | 'projects' | 'documents' | 'invoices' | 'landing' | 'templates' | 'settings'
+    'dashboard' | 'leads' | 'projects' | 'documents' | 'invoices' | 'landing' | 'services' | 'pricing' | 'reviews' | 'templates' | 'settings'
   >('dashboard');
 
   // Landing Page CMS form state
@@ -86,6 +120,80 @@ export const AdminPortal: React.FC = () => {
 
   // Mobile sidebar toggle
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Service CMS Modal state
+  const [showServiceModal, setShowServiceModal] = useState(false);
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
+  const [serviceForm, setServiceForm] = useState<Partial<StudioService>>({
+    title: '',
+    slug: '',
+    tagline: '',
+    description: '',
+    deliverables: [],
+    startingPriceKES: 200000,
+    startingPriceUSD: 1500,
+    timeline: '3 - 4 Weeks',
+    icon: 'Code',
+    popular: false,
+    active: true,
+  });
+
+  // Pricing Package Modal state
+  const [showPricingModal, setShowPricingModal] = useState(false);
+  const [editingPricingId, setEditingPricingId] = useState<string | null>(null);
+  const [pricingSaveToast, setPricingSaveToast] = useState<string | null>(null);
+  const [quickPricingEditId, setQuickPricingEditId] = useState<string | null>(null);
+  const [quickKes, setQuickKes] = useState<number>(0);
+  const [quickUsd, setQuickUsd] = useState<number>(0);
+  const [pricingForm, setPricingForm] = useState<Partial<PricingPackage>>({
+    name: '',
+    badge: 'NEW SPRINT',
+    priceKES: 300000,
+    priceUSD: 2200,
+    billingPeriod: 'Fixed Scope',
+    deliveryTime: '4 - 6 Weeks',
+    description: '',
+    features: [],
+    highlight: false,
+    depositRequiredPercent: 50,
+    active: true,
+  });
+
+  // Founder Photo Upload Handler - automatically saves and syncs live
+  const handleFounderPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result as string;
+      setLandingFormData((prev) => ({ ...prev, founderPhotoUrl: dataUrl }));
+      try {
+        await updateLandingConfig({ founderPhotoUrl: dataUrl });
+        await updateSettings({ founderPhotoUrl: dataUrl });
+        showToast('success', 'Founder Photo Updated', 'New portrait saved and synchronized live across the site!');
+      } catch (err) {
+        showToast('error', 'Save Notice', 'Photo loaded locally.');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveFounderPhotoUrl = async (url: string) => {
+    if (!url.trim()) return;
+    const cleanUrl = url.trim();
+    setLandingFormData((prev) => ({ ...prev, founderPhotoUrl: cleanUrl }));
+    try {
+      await updateLandingConfig({ founderPhotoUrl: cleanUrl });
+      await updateSettings({ founderPhotoUrl: cleanUrl });
+      showToast('success', 'Founder Photo Saved', 'New photo saved and synchronized live across the website!');
+    } catch (err) {
+      showToast('error', 'Save Notice', 'Failed to save photo.');
+    }
+  };
+
+  // Client Reviews CMS state
+  const [reviewFilter, setReviewFilter] = useState<'all' | 'featured' | 'published' | 'pending'>('all');
+  const [copiedReviewText, setCopiedReviewText] = useState<string | null>(null);
 
   // Secure Document Modal
   const [secureDocModalOpen, setSecureDocModalOpen] = useState(false);
@@ -184,6 +292,76 @@ export const AdminPortal: React.FC = () => {
     }
   };
 
+  const handleSaveService = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!serviceForm.title) return;
+    try {
+      if (editingServiceId) {
+        await updateService(editingServiceId, serviceForm);
+        showToast('success', 'Service Offering Updated', `${serviceForm.title} saved and synced live!`);
+      } else {
+        await addService({
+          ...serviceForm,
+          id: 'serv-' + Date.now(),
+        });
+        showToast('success', 'Service Offering Added', `${serviceForm.title} created and published!`);
+      }
+      setShowServiceModal(false);
+      setEditingServiceId(null);
+    } catch (err) {
+      showToast('error', 'Error', 'Failed to save service.');
+      console.error('Service save error:', err);
+    }
+  };
+
+  const handleSavePricing = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pricingForm.name) return;
+    try {
+      if (editingPricingId) {
+        await updatePricingPackage(editingPricingId, pricingForm);
+        showToast('success', 'Pricing Package Updated', `${pricingForm.name} saved and synced live!`);
+      } else {
+        await addPricingPackage({
+          ...pricingForm,
+          id: 'pkg-' + Date.now(),
+        });
+        showToast('success', 'Pricing Package Created', `${pricingForm.name} created and live on public site!`);
+      }
+      setShowPricingModal(false);
+      setEditingPricingId(null);
+    } catch (err) {
+      showToast('error', 'Error', 'Failed to save pricing package.');
+      console.error('Pricing save error:', err);
+    }
+  };
+
+  const handleSaveQuickPrice = async (pkgId: string) => {
+    try {
+      await updatePricingPackage(pkgId, { priceKES: quickKes, priceUSD: quickUsd });
+      setQuickPricingEditId(null);
+      showToast('success', 'Price Updated Live', `Price updated to KES ${quickKes.toLocaleString()} ($${quickUsd.toLocaleString()} USD). Reflected on public site!`);
+    } catch (err) {
+      showToast('error', 'Error', 'Failed to update price.');
+      console.error('Quick price error:', err);
+    }
+  };
+
+  const handleCopyReviewQuote = (review: ClientReview) => {
+    const text = `"${review.headline}"\n\n"${review.comment}"\n— ${review.clientName}, ${review.clientCompany} (${review.serviceName}) ★★★★★`;
+    navigator.clipboard.writeText(text);
+    setCopiedReviewText(review.id);
+    setTimeout(() => setCopiedReviewText(null), 2500);
+  };
+
+  const handleCopyReviewInvite = () => {
+    const bizUrl = settings.googleBusinessProfileUrl || 'https://maps.app.goo.gl/trevoncreates';
+    const message = `Hi! Trevor from Trevon Creates here. Thank you for partnering with us on your recent software delivery! If you have 60 seconds, could you share a review of your experience? You can submit directly on our Google Business Profile: ${bizUrl} or in your Client Portal. We truly appreciate your feedback!`;
+    navigator.clipboard.writeText(message);
+    setCopiedReviewText('invite');
+    setTimeout(() => setCopiedReviewText(null), 3500);
+  };
+
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentProject || !newTaskTitle.trim()) return;
@@ -193,6 +371,7 @@ export const AdminPortal: React.FC = () => {
       owner: newTaskOwner,
       type: newTaskType,
     });
+    showToast('success', 'Task Created', `"${newTaskTitle.trim()}" added to project stage.`);
     setShowAddTaskModal(false);
     setNewTaskTitle('');
     setNewTaskDesc('');
@@ -202,6 +381,7 @@ export const AdminPortal: React.FC = () => {
     e.preventDefault();
     if (!currentProject || !rejectingTask || !rejectReason.trim()) return;
     rejectTask(currentProject.id, rejectingTask.id, rejectReason.trim());
+    showToast('info', 'Task Rejected with Feedback', 'Client notified to make necessary revisions.');
     setRejectingTask(null);
     setRejectReason('');
   };
@@ -214,6 +394,7 @@ export const AdminPortal: React.FC = () => {
       amount: Number(invAmount),
       currency: invCurrency,
     });
+    showToast('success', 'Invoice Generated', `Invoice for ${invCurrency} ${Number(invAmount).toLocaleString()} issued.`);
     setShowInvoiceModal(false);
     setInvDesc('');
   };
@@ -226,6 +407,7 @@ export const AdminPortal: React.FC = () => {
       url: delUrl.trim(),
       version: delVersion.trim(),
     });
+    showToast('success', 'Deliverable Published', `"${delTitle.trim()}" published for client access.`);
     setShowDelModal(false);
     setDelTitle('');
     setDelUrl('');
@@ -235,6 +417,7 @@ export const AdminPortal: React.FC = () => {
     e.preventDefault();
     if (!currentProject || !updTitle.trim() || !updBody.trim()) return;
     postProjectUpdate(currentProject.id, updTitle.trim(), updBody.trim());
+    showToast('success', 'Project Broadcast Dispatched', `"${updTitle.trim()}" posted to client feed.`);
     setShowUpdateModal(false);
     setUpdTitle('');
     setUpdBody('');
@@ -414,6 +597,69 @@ export const AdminPortal: React.FC = () => {
               )}
             </button>
 
+            {/* Services Management */}
+            <button
+              onClick={() => {
+                setActiveTab('services');
+                setMobileMenuOpen(false);
+              }}
+              className={`w-full px-3 py-2.5 rounded-lg flex items-center justify-between transition-all cursor-pointer ${
+                activeTab === 'services'
+                  ? 'bg-[#FFAE00]/15 text-[#FFAE00] font-bold border border-[#FFAE00]/40 shadow-[0_0_12px_rgba(255,174,0,0.15)]'
+                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Briefcase className="w-4 h-4 text-[#FFAE00]" />
+                <span>Services &amp; Offerings</span>
+              </div>
+              <span className="px-1.5 py-0.5 rounded bg-white/5 text-neutral-300 font-mono text-[10px] border border-white/10">
+                {services.length}
+              </span>
+            </button>
+
+            {/* Pricing Packages */}
+            <button
+              onClick={() => {
+                setActiveTab('pricing');
+                setMobileMenuOpen(false);
+              }}
+              className={`w-full px-3 py-2.5 rounded-lg flex items-center justify-between transition-all cursor-pointer ${
+                activeTab === 'pricing'
+                  ? 'bg-[#FFAE00]/15 text-[#FFAE00] font-bold border border-[#FFAE00]/40 shadow-[0_0_12px_rgba(255,174,0,0.15)]'
+                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Package className="w-4 h-4 text-[#00FF00]" />
+                <span>Pricing Packages</span>
+              </div>
+              <span className="px-1.5 py-0.5 rounded bg-white/5 text-neutral-300 font-mono text-[10px] border border-white/10">
+                {pricingPackages.length}
+              </span>
+            </button>
+
+            {/* Client Reviews & Google Business */}
+            <button
+              onClick={() => {
+                setActiveTab('reviews');
+                setMobileMenuOpen(false);
+              }}
+              className={`w-full px-3 py-2.5 rounded-lg flex items-center justify-between transition-all cursor-pointer ${
+                activeTab === 'reviews'
+                  ? 'bg-[#FFAE00]/15 text-[#FFAE00] font-bold border border-[#FFAE00]/40 shadow-[0_0_12px_rgba(255,174,0,0.15)]'
+                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Star className="w-4 h-4 text-[#FFAE00]" />
+                <span>Reviews &amp; Google Hub</span>
+              </div>
+              <span className="px-1.5 py-0.5 rounded bg-[#FFAE00]/10 text-[#FFAE00] font-bold text-[10px] border border-[#FFAE00]/30">
+                {reviews.length}
+              </span>
+            </button>
+
             {/* Landing Page CMS */}
             <button
               onClick={() => {
@@ -539,6 +785,12 @@ export const AdminPortal: React.FC = () => {
                   ? 'Contracts & Agreements'
                   : activeTab === 'invoices'
                   ? 'Invoices & Billing Gateway'
+                  : activeTab === 'services'
+                  ? 'Studio Services & Engineering Disciplines'
+                  : activeTab === 'pricing'
+                  ? 'Pricing Packages & Sprints'
+                  : activeTab === 'reviews'
+                  ? 'Client Reviews & Google Business Hub'
                   : activeTab === 'landing'
                   ? 'Landing Page CMS & Content Editor'
                   : activeTab === 'templates'
@@ -550,6 +802,76 @@ export const AdminPortal: React.FC = () => {
 
           {/* Quick Header Actions */}
           <div className="flex items-center gap-2">
+            {activeTab === 'services' && (
+              <button
+                onClick={() => {
+                  setEditingServiceId(null);
+                  setServiceForm({
+                    title: '',
+                    slug: '',
+                    tagline: '',
+                    description: '',
+                    deliverables: [
+                      'High-Performance Architecture Plan',
+                      'High-Fidelity User Interface Prototype',
+                      'Production Container Staging Rollout',
+                    ],
+                    startingPriceKES: 200000,
+                    startingPriceUSD: 1500,
+                    timeline: '3 - 4 Weeks',
+                    icon: 'Code',
+                    popular: false,
+                    active: true,
+                  });
+                  setShowServiceModal(true);
+                }}
+                className="px-3 py-1.5 rounded bg-[#00FF00] hover:bg-white text-black font-heading font-bold text-xs flex items-center gap-1.5 shadow-[0_0_12px_rgba(0,255,0,0.3)] transition-all cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>New Service</span>
+              </button>
+            )}
+
+            {activeTab === 'pricing' && (
+              <button
+                onClick={() => {
+                  setEditingPricingId(null);
+                  setPricingForm({
+                    name: '',
+                    badge: 'NEW SPRINT',
+                    priceKES: 300000,
+                    priceUSD: 2200,
+                    billingPeriod: 'Fixed Scope',
+                    deliveryTime: '4 - 6 Weeks',
+                    description: '',
+                    features: [
+                      'Complete Architectural RFC and Roadmap',
+                      'Full-Stack TypeScript & React Implementation',
+                      'Automated Cloud Run Deployment & SSL',
+                    ],
+                    highlight: false,
+                    depositRequiredPercent: 50,
+                    active: true,
+                  });
+                  setShowPricingModal(true);
+                }}
+                className="px-3 py-1.5 rounded bg-[#00FF00] hover:bg-white text-black font-heading font-bold text-xs flex items-center gap-1.5 shadow-[0_0_12px_rgba(0,255,0,0.3)] transition-all cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>New Package</span>
+              </button>
+            )}
+
+            {activeTab === 'reviews' && (
+              <button
+                onClick={handleCopyReviewInvite}
+                className="px-3 py-1.5 rounded bg-[#FFAE00] hover:bg-white text-black font-heading font-bold text-xs flex items-center gap-1.5 shadow-[0_0_12px_rgba(255,174,0,0.3)] transition-all cursor-pointer"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>{copiedReviewText === 'invite' ? 'Link Copied!' : 'Copy Review Invite'}</span>
+              </button>
+            )}
+
             {activeTab === 'projects' && (
               <button
                 onClick={() => setShowAddTaskModal(true)}
@@ -1425,6 +1747,857 @@ export const AdminPortal: React.FC = () => {
           )}
 
           {/* ========================================================
+              TAB: STUDIO SERVICES & ENGINEERING DISCIPLINES
+             ======================================================== */}
+          {activeTab === 'services' && (
+            <div className="space-y-8 max-w-6xl">
+              {/* Header with Stats and Actions */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-xl bg-[#080B09] border border-white/10">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-mono text-xs text-[#FFAE00] uppercase tracking-wider font-semibold">
+                      ENGINEERING DISCIPLINES &amp; SERVICE OFFERINGS
+                    </span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                      firestoreConnected ? 'bg-[#00FF00]/10 text-[#00FF00] border border-[#00FF00]/30' : 'bg-[#FFAE00]/10 text-[#FFAE00] border border-[#FFAE00]/30'
+                    }`}>
+                      {firestoreConnected ? '● CLOUD FIRESTORE SYNC' : '○ LOCAL STORAGE'}
+                    </span>
+                  </div>
+                  <h2 className="font-heading text-xl font-bold text-white">
+                    Services &amp; Technical Capabilities
+                  </h2>
+                  <p className="text-xs text-neutral-400 font-sans mt-0.5">
+                    Define deliverables, minimum investment thresholds, timelines, and active status for your public portfolio and client contracts.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2.5">
+                  <button
+                    onClick={() => {
+                      setEditingServiceId(null);
+                      setServiceForm({
+                        title: '',
+                        slug: '',
+                        tagline: '',
+                        description: '',
+                        deliverables: [
+                          'Architecture Specification Plan',
+                          'High-Fidelity Interactive Prototype',
+                          'Production Deployment & CI/CD Pipeline',
+                        ],
+                        startingPriceKES: 200000,
+                        startingPriceUSD: 1500,
+                        timeline: '3 - 4 Weeks',
+                        icon: 'Code',
+                        popular: false,
+                        active: true,
+                      });
+                      setShowServiceModal(true);
+                    }}
+                    className="px-4 py-2 rounded bg-[#00FF00] hover:bg-white text-black font-heading font-bold text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(0,255,0,0.3)] transition-all cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create New Service</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Summary Metrics */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="p-4 rounded-xl bg-[#080B09] border border-white/10 space-y-1">
+                  <div className="font-mono text-[11px] text-neutral-400">Total Services</div>
+                  <div className="font-mono text-2xl font-bold text-white">{services.length}</div>
+                </div>
+                <div className="p-4 rounded-xl bg-[#080B09] border border-white/10 space-y-1">
+                  <div className="font-mono text-[11px] text-neutral-400">Active Live</div>
+                  <div className="font-mono text-2xl font-bold text-[#00FF00]">{services.filter((s) => s.active).length}</div>
+                </div>
+                <div className="p-4 rounded-xl bg-[#080B09] border border-white/10 space-y-1">
+                  <div className="font-mono text-[11px] text-neutral-400">Core / Popular</div>
+                  <div className="font-mono text-2xl font-bold text-[#FFAE00]">{services.filter((s) => s.popular).length}</div>
+                </div>
+                <div className="p-4 rounded-xl bg-[#080B09] border border-white/10 space-y-1">
+                  <div className="font-mono text-[11px] text-neutral-400">Currency Default</div>
+                  <div className="font-mono text-2xl font-bold text-neutral-200">{settings.currency}</div>
+                </div>
+              </div>
+
+              {/* Services Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {services.map((service) => (
+                  <div
+                    key={service.id}
+                    className={`p-6 rounded-xl bg-[#080B09] border transition-all space-y-5 ${
+                      service.active ? 'border-white/10 hover:border-white/20' : 'border-dashed border-white/10 opacity-70'
+                    }`}
+                  >
+                    {/* Service Header */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[#00FF00]">
+                          {service.icon === 'Layout' && <Layout className="w-5 h-5" />}
+                          {service.icon === 'Code' && <Code className="w-5 h-5" />}
+                          {service.icon === 'Zap' && <Zap className="w-5 h-5" />}
+                          {service.icon === 'Server' && <Server className="w-5 h-5" />}
+                          {service.icon === 'Cpu' && <Cpu className="w-5 h-5" />}
+                          {service.icon === 'Database' && <Database className="w-5 h-5" />}
+                          {service.icon === 'Smartphone' && <Smartphone className="w-5 h-5" />}
+                          {!['Layout', 'Code', 'Zap', 'Server', 'Cpu', 'Database', 'Smartphone'].includes(service.icon) && (
+                            <Briefcase className="w-5 h-5" />
+                          )}
+                        </div>
+                        <div>
+                          <h3 className="font-heading text-lg font-bold text-white">
+                            {service.title}
+                          </h3>
+                          <div className="font-mono text-xs text-neutral-500">
+                            slug: /{service.slug}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        {service.popular && <Badge label="POPULAR" variant="orange" />}
+                        <Badge
+                          label={service.active ? 'LIVE' : 'DRAFT'}
+                          variant={service.active ? 'green' : 'gray'}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Tagline & Description */}
+                    <div className="space-y-1.5">
+                      <div className="font-sans text-xs font-semibold text-[#00FF00]">
+                        {service.tagline}
+                      </div>
+                      <p className="text-xs text-neutral-300 leading-relaxed font-sans">
+                        {service.description}
+                      </p>
+                    </div>
+
+                    {/* Deliverables Checklist */}
+                    <div className="space-y-2 pt-2 border-t border-white/5">
+                      <div className="font-mono text-[10px] text-neutral-400 uppercase tracking-wider">
+                        KEY DELIVERABLES:
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {service.deliverables.map((del, dIdx) => (
+                          <span
+                            key={dIdx}
+                            className="px-2 py-0.5 rounded bg-black border border-white/10 font-mono text-[11px] text-neutral-300 flex items-center gap-1"
+                          >
+                            <span className="text-[#00FF00]">✓</span>
+                            <span>{del}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Pricing & Timeline Strip */}
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-black/60 border border-white/10 font-mono text-xs">
+                      <div>
+                        <div className="text-[10px] text-neutral-500 uppercase">Starting Investment</div>
+                        <div className="font-bold text-white text-sm">
+                          KES {service.startingPriceKES?.toLocaleString()}{' '}
+                          <span className="text-neutral-500 font-normal text-xs">
+                            (${service.startingPriceUSD?.toLocaleString()} USD)
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <div className="text-[10px] text-neutral-500 uppercase">Typical Timeline</div>
+                        <div className="font-bold text-[#FFAE00]">{service.timeline}</div>
+                      </div>
+                    </div>
+
+                    {/* Action Bar */}
+                    <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs font-mono">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => updateService(service.id, { active: !service.active })}
+                          className={`px-2.5 py-1 rounded border transition-colors cursor-pointer text-[11px] ${
+                            service.active
+                              ? 'bg-white/5 hover:bg-white/10 border-white/15 text-neutral-300'
+                              : 'bg-[#00FF00]/10 hover:bg-[#00FF00]/20 border-[#00FF00]/30 text-[#00FF00]'
+                          }`}
+                        >
+                          {service.active ? 'Pause Service' : 'Activate Service'}
+                        </button>
+                        <button
+                          onClick={() => updateService(service.id, { popular: !service.popular })}
+                          className={`px-2.5 py-1 rounded border transition-colors cursor-pointer text-[11px] ${
+                            service.popular
+                              ? 'bg-[#FFAE00]/10 border-[#FFAE00]/30 text-[#FFAE00]'
+                              : 'bg-white/5 hover:bg-white/10 border-white/15 text-neutral-400'
+                          }`}
+                        >
+                          {service.popular ? '★ Popular' : '☆ Mark Popular'}
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingServiceId(service.id);
+                            setServiceForm({ ...service });
+                            setShowServiceModal(true);
+                          }}
+                          className="px-2.5 py-1 rounded bg-white/5 hover:bg-white/15 border border-white/15 text-neutral-200 hover:text-white flex items-center gap-1 cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Edit</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Delete service "${service.title}"?`)) {
+                              deleteService(service.id);
+                            }
+                          }}
+                          className="p-1 rounded hover:bg-red-500/20 text-neutral-500 hover:text-red-400 transition-colors cursor-pointer"
+                          title="Delete Service"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================
+              TAB: PRICING PACKAGES & SPRINTS
+             ======================================================== */}
+          {activeTab === 'pricing' && (
+            <div className="space-y-6 max-w-6xl">
+              {/* Toast Message */}
+              {pricingSaveToast && (
+                <div className="p-3.5 rounded-xl bg-[#00FF00]/15 border border-[#00FF00]/40 text-[#00FF00] font-mono text-xs flex items-center justify-between shadow-[0_0_20px_rgba(0,255,0,0.25)] animate-fade-in">
+                  <div className="flex items-center gap-2">
+                    <CheckCheck className="w-4 h-4 text-[#00FF00]" />
+                    <span className="font-bold">{pricingSaveToast}</span>
+                  </div>
+                  <button
+                    onClick={() => setPricingSaveToast(null)}
+                    className="text-neutral-400 hover:text-white px-2 py-0.5 rounded bg-black/40 text-[11px]"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+
+              {/* Header with Stats and Actions */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-xl bg-[#080B09] border border-white/10">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-mono text-xs text-[#00FF00] uppercase tracking-wider font-semibold">
+                      PRICING ENGINE &amp; FIXED-SCOPE SPRINTS
+                    </span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                      firestoreConnected ? 'bg-[#00FF00]/10 text-[#00FF00] border border-[#00FF00]/30' : 'bg-[#FFAE00]/10 text-[#FFAE00] border border-[#FFAE00]/30'
+                    }`}>
+                      {firestoreConnected ? '● CLOUD FIRESTORE SYNC' : '○ LOCAL STORAGE'}
+                    </span>
+                  </div>
+                  <h2 className="font-heading text-xl font-bold text-white">
+                    Client Pricing Packages
+                  </h2>
+                  <p className="text-xs text-neutral-400 font-sans mt-0.5">
+                    Control turnkey packages, retainer rates, deposit terms, and feature checklists displayed on the public portal.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2.5">
+                  <button
+                    onClick={() => {
+                      setEditingPricingId(null);
+                      setPricingForm({
+                        name: '',
+                        badge: 'NEW SPRINT',
+                        priceKES: 300000,
+                        priceUSD: 2200,
+                        billingPeriod: 'Fixed Scope',
+                        deliveryTime: '4 - 6 Weeks',
+                        description: '',
+                        features: [
+                          'Complete Architecture Specification',
+                          'Full-Stack TypeScript & React Implementation',
+                          'Automated Cloud Run Deployment & SSL',
+                          '2 Weeks Post-Launch Hypercare',
+                        ],
+                        highlight: false,
+                        depositRequiredPercent: 50,
+                        active: true,
+                      });
+                      setShowPricingModal(true);
+                    }}
+                    className="px-4 py-2 rounded bg-[#00FF00] hover:bg-white text-black font-heading font-bold text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(0,255,0,0.3)] transition-all cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create Pricing Package</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Regional Currency & Multi-Currency Engine Overview */}
+              <div className="p-5 rounded-xl bg-gradient-to-r from-[#080B09] via-black to-[#080B09] border border-[#00FF00]/30 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-[#00FF00]" />
+                    <span className="font-heading font-bold text-sm text-white">
+                      Regional Currency Localization Engine
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-[#00FF00]/15 text-[#00FF00] font-mono text-[10px] font-bold border border-[#00FF00]/30">
+                      LIVE AUTO-DETECTION ACTIVE
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('settings')}
+                    className="text-xs font-mono text-[#FFAE00] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Configure Base Currency &amp; Rates in Settings</span>
+                    <ArrowUpRight className="w-3 h-3" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-xs font-mono">
+                  {[
+                    { flag: '🇰🇪', code: 'KES', label: 'Kenya (Base)', rate: '1 KES = 1.0' },
+                    { flag: '🇺🇸', code: 'USD', label: 'United States', rate: '1 USD ≈ 130 KES' },
+                    { flag: '🇪🇺', code: 'EUR', label: 'Europe', rate: '1 EUR ≈ 142 KES' },
+                    { flag: '🇬🇧', code: 'GBP', label: 'United Kingdom', rate: '1 GBP ≈ 168 KES' },
+                    { flag: '🇨🇦', code: 'CAD', label: 'Canada', rate: '1 CAD ≈ 95 KES' },
+                    { flag: '🇦🇺', code: 'AUD', label: 'Australia', rate: '1 AUD ≈ 85 KES' },
+                  ].map((r) => (
+                    <div key={r.code} className="p-2.5 rounded bg-white/5 border border-white/10 space-y-0.5">
+                      <div className="flex items-center gap-1.5 font-bold text-white">
+                        <span>{r.flag}</span>
+                        <span>{r.code}</span>
+                      </div>
+                      <div className="text-[10px] text-neutral-400">{r.label}</div>
+                      <div className="text-[10px] text-[#00FF00] font-semibold">{r.rate}</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] font-sans text-neutral-400">
+                  Visitors from Kenya see prices in <strong className="text-white">KES</strong>, international visitors automatically see prices in their native currency (<strong className="text-white">USD, EUR, GBP, CAD, AUD</strong>), and can switch currencies on the public landing page at any time.
+                </p>
+              </div>
+
+              {/* Pricing Packages Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {pricingPackages.map((pkg) => (
+                  <div
+                    key={pkg.id}
+                    className={`p-6 rounded-xl bg-[#080B09] border flex flex-col justify-between transition-all space-y-6 ${
+                      pkg.highlight
+                        ? 'border-[#00FF00]/50 shadow-[0_0_25px_rgba(0,255,0,0.15)] ring-1 ring-[#00FF00]/30'
+                        : pkg.active
+                        ? 'border-white/10 hover:border-white/20'
+                        : 'border-dashed border-white/10 opacity-70'
+                    }`}
+                  >
+                    <div className="space-y-4">
+                      {/* Top Badges */}
+                      <div className="flex items-center justify-between gap-2">
+                        {pkg.badge ? (
+                          <span
+                            className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold tracking-wider ${
+                              pkg.highlight
+                                ? 'bg-[#00FF00]/20 text-[#00FF00] border border-[#00FF00]/40'
+                                : 'bg-[#FFAE00]/15 text-[#FFAE00] border border-[#FFAE00]/30'
+                            }`}
+                          >
+                            {pkg.badge}
+                          </span>
+                        ) : (
+                          <span />
+                        )}
+
+                        <Badge
+                          label={pkg.active ? 'ACTIVE' : 'PAUSED'}
+                          variant={pkg.active ? 'green' : 'gray'}
+                        />
+                      </div>
+
+                      {/* Title & Description */}
+                      <div>
+                        <h3 className="font-heading text-xl font-bold text-white">
+                          {pkg.name}
+                        </h3>
+                        <p className="text-xs text-neutral-300 font-sans mt-1 leading-relaxed">
+                          {pkg.description}
+                        </p>
+                      </div>
+
+                      {/* Pricing Amount Block & Quick Edit */}
+                      {quickPricingEditId === pkg.id ? (
+                        <div className="p-4 rounded-lg bg-black border-2 border-[#00FF00]/60 space-y-3">
+                          <div className="font-mono text-[11px] text-[#00FF00] font-bold">
+                            QUICK PRICE EDITOR
+                          </div>
+                          <div className="space-y-2 font-mono text-xs">
+                            <div>
+                              <label className="text-[10px] text-neutral-400 block mb-0.5">Price in KES:</label>
+                              <input
+                                type="number"
+                                value={quickKes}
+                                onChange={(e) => {
+                                  const val = Number(e.target.value);
+                                  setQuickKes(val);
+                                  setQuickUsd(Math.round(val / 130));
+                                }}
+                                className="w-full px-2.5 py-1.5 rounded bg-[#111] border border-white/20 text-white font-mono text-xs focus:border-[#00FF00] focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-neutral-400 block mb-0.5">Price in USD:</label>
+                              <input
+                                type="number"
+                                value={quickUsd}
+                                onChange={(e) => {
+                                  const val = Number(e.target.value);
+                                  setQuickUsd(val);
+                                  setQuickKes(Math.round(val * 130));
+                                }}
+                                className="w-full px-2.5 py-1.5 rounded bg-[#111] border border-white/20 text-white font-mono text-xs focus:border-[#00FF00] focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => handleSaveQuickPrice(pkg.id)}
+                              className="px-3 py-1 rounded bg-[#00FF00] hover:bg-white text-black font-heading font-bold text-xs cursor-pointer"
+                            >
+                              Save Price
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setQuickPricingEditId(null)}
+                              className="px-2.5 py-1 rounded bg-white/10 text-neutral-300 hover:text-white text-xs cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-4 rounded-lg bg-black border border-white/10 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="font-mono text-2xl font-bold text-[#00FF00]">
+                              KES {pkg.priceKES?.toLocaleString()}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setQuickPricingEditId(pkg.id);
+                                setQuickKes(pkg.priceKES);
+                                setQuickUsd(pkg.priceUSD);
+                              }}
+                              className="px-2 py-0.5 rounded bg-white/5 hover:bg-[#00FF00]/20 text-[#00FF00] text-[10px] font-mono border border-white/10 hover:border-[#00FF00]/40 transition-colors cursor-pointer"
+                            >
+                              Edit Price
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between text-xs font-mono text-neutral-400">
+                            <span>${pkg.priceUSD?.toLocaleString()} USD</span>
+                            <span className="text-neutral-500">• {pkg.billingPeriod}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Turnaround & Deposit */}
+                      <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
+                        <div className="p-2.5 rounded bg-white/5 border border-white/5">
+                          <span className="text-neutral-500 block text-[10px]">DELIVERY:</span>
+                          <span className="text-white font-bold">{pkg.deliveryTime}</span>
+                        </div>
+                        <div className="p-2.5 rounded bg-white/5 border border-white/5">
+                          <span className="text-neutral-500 block text-[10px]">DEPOSIT REQ:</span>
+                          <span className="text-[#FFAE00] font-bold">{pkg.depositRequiredPercent}% Upfront</span>
+                        </div>
+                      </div>
+
+                      {/* Features List */}
+                      <div className="space-y-2 pt-2 border-t border-white/10">
+                        <div className="font-mono text-[10px] text-neutral-400 uppercase tracking-wider">
+                          INCLUDED DELIVERABLES:
+                        </div>
+                        <ul className="space-y-1.5 font-sans text-xs text-neutral-300">
+                          {pkg.features.map((feat, fIdx) => (
+                            <li key={fIdx} className="flex items-start gap-2">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-[#00FF00] shrink-0 mt-0.5" />
+                              <span>{feat}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
+                    {/* Action Bar */}
+                    <div className="pt-4 border-t border-white/10 flex items-center justify-between text-xs font-mono">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => updatePricingPackage(pkg.id, { highlight: !pkg.highlight })}
+                          className={`px-2 py-1 rounded text-[11px] border cursor-pointer transition-colors ${
+                            pkg.highlight
+                              ? 'bg-[#00FF00]/15 border-[#00FF00]/40 text-[#00FF00] font-bold'
+                              : 'bg-white/5 border-white/10 text-neutral-400 hover:text-white'
+                          }`}
+                        >
+                          {pkg.highlight ? '★ Highlighted' : '☆ Highlight'}
+                        </button>
+                        <button
+                          onClick={() => updatePricingPackage(pkg.id, { active: !pkg.active })}
+                          className="px-2 py-1 rounded text-[11px] bg-white/5 border border-white/10 text-neutral-400 hover:text-white cursor-pointer"
+                        >
+                          {pkg.active ? 'Pause' : 'Activate'}
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingPricingId(pkg.id);
+                            setPricingForm({ ...pkg });
+                            setShowPricingModal(true);
+                          }}
+                          className="px-2.5 py-1 rounded bg-[#00FF00]/10 hover:bg-[#00FF00]/25 border border-[#00FF00]/30 text-[#00FF00] flex items-center gap-1 cursor-pointer font-bold"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Edit Details</span>
+                        </button>
+                        <button
+                          onClick={() => deletePricingPackage(pkg.id)}
+                          className="p-1 rounded hover:bg-red-500/20 text-neutral-500 hover:text-red-400 transition-colors cursor-pointer"
+                          title="Delete Package"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================
+              TAB: CLIENT REVIEWS & GOOGLE BUSINESS HUB
+             ======================================================== */}
+          {activeTab === 'reviews' && (
+            <div className="space-y-8 max-w-6xl">
+              {/* Google Business Profile Connection Hub Card */}
+              <div className="p-6 rounded-xl bg-gradient-to-br from-[#080B09] via-black to-[#080B09] border border-[#FFAE00]/40 shadow-[0_0_25px_rgba(255,174,0,0.1)] space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-[#FFAE00]/15 border border-[#FFAE00]/40 flex items-center justify-center text-[#FFAE00]">
+                      <Star className="w-6 h-6 fill-[#FFAE00]" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="font-heading text-lg font-bold text-white">
+                          Google Business Profile &amp; Client Reputation Hub
+                        </h2>
+                        <Badge label="REPUTATION SYNC" variant="orange" />
+                      </div>
+                      <p className="text-xs text-neutral-400 font-sans mt-0.5">
+                        Collect verified 5-star reviews from client portal deliverables and route directly to your Google Business Profile.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleCopyReviewInvite}
+                      className="px-3.5 py-2 rounded bg-[#FFAE00] hover:bg-white text-black font-heading font-bold text-xs flex items-center gap-1.5 shadow-[0_0_12px_rgba(255,174,0,0.3)] transition-all cursor-pointer"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>{copiedReviewText === 'invite' ? 'Invite Message Copied!' : 'Copy WhatsApp Invite'}</span>
+                    </button>
+
+                    {settings.googleBusinessProfileUrl && (
+                      <a
+                        href={settings.googleBusinessProfileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3 py-2 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white font-mono text-xs flex items-center gap-1.5"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 text-[#00FF00]" />
+                        <span>View Google Profile</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Direct Google Business Link Editor */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-lg bg-black/60 border border-white/10 font-sans text-xs">
+                  <div className="space-y-1">
+                    <label className="font-mono text-[11px] text-neutral-300 flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-[#00FF00]" />
+                      <span>Google Business Review URL</span>
+                    </label>
+                    <input
+                      type="url"
+                      value={settings.googleBusinessProfileUrl || ''}
+                      onChange={(e) => updateSettings({ googleBusinessProfileUrl: e.target.value })}
+                      placeholder="https://maps.app.goo.gl/your-business or https://g.page/r/.../review"
+                      className="w-full px-3 py-1.5 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#FFAE00] focus:outline-none"
+                    />
+                    <span className="text-[10px] text-neutral-500 font-mono">
+                      Clients who submit in the portal get a 1-click button to publish directly here.
+                    </span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-mono text-[11px] text-neutral-300 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-[#FFAE00]" />
+                      <span>Google Business Place ID</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.googleBusinessPlaceId || ''}
+                      onChange={(e) => updateSettings({ googleBusinessPlaceId: e.target.value })}
+                      placeholder="ChIJN1t_tDeuEmsRUsoyG83frY4"
+                      className="w-full px-3 py-1.5 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#FFAE00] focus:outline-none"
+                    />
+                    <span className="text-[10px] text-neutral-500 font-mono">
+                      Used for verified Schema.org LocalBusiness structured rich snippet generation.
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Review Filter Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setReviewFilter('all')}
+                    className={`px-3 py-1.5 rounded font-mono text-xs cursor-pointer transition-colors ${
+                      reviewFilter === 'all'
+                        ? 'bg-[#00FF00]/15 text-[#00FF00] font-bold border border-[#00FF00]/30'
+                        : 'text-neutral-400 hover:text-white bg-white/5'
+                    }`}
+                  >
+                    All Reviews ({reviews.length})
+                  </button>
+                  <button
+                    onClick={() => setReviewFilter('featured')}
+                    className={`px-3 py-1.5 rounded font-mono text-xs cursor-pointer transition-colors ${
+                      reviewFilter === 'featured'
+                        ? 'bg-[#FFAE00]/15 text-[#FFAE00] font-bold border border-[#FFAE00]/30'
+                        : 'text-neutral-400 hover:text-white bg-white/5'
+                    }`}
+                  >
+                    Featured on Landing ({reviews.filter((r) => r.status === 'featured').length})
+                  </button>
+                  <button
+                    onClick={() => setReviewFilter('published')}
+                    className={`px-3 py-1.5 rounded font-mono text-xs cursor-pointer transition-colors ${
+                      reviewFilter === 'published'
+                        ? 'bg-blue-500/15 text-blue-400 font-bold border border-blue-500/30'
+                        : 'text-neutral-400 hover:text-white bg-white/5'
+                    }`}
+                  >
+                    Published ({reviews.filter((r) => r.status === 'published').length})
+                  </button>
+                  <button
+                    onClick={() => setReviewFilter('pending')}
+                    className={`px-3 py-1.5 rounded font-mono text-xs cursor-pointer transition-colors ${
+                      reviewFilter === 'pending'
+                        ? 'bg-amber-500/15 text-amber-400 font-bold border border-amber-500/30'
+                        : 'text-neutral-400 hover:text-white bg-white/5'
+                    }`}
+                  >
+                    Pending Verification ({reviews.filter((r) => r.status === 'pending').length})
+                  </button>
+                </div>
+
+                <div className="font-mono text-xs text-neutral-400 flex items-center gap-2">
+                  <span className="text-[#FFAE00] font-bold flex items-center gap-1">
+                    <Star className="w-4 h-4 fill-[#FFAE00]" /> 5.0 Average
+                  </span>
+                  <span>• 100% Recommendation Rate</span>
+                </div>
+              </div>
+
+              {/* Reviews List */}
+              <div className="space-y-4">
+                {reviews
+                  .filter((r) => {
+                    if (reviewFilter === 'all') return true;
+                    return r.status === reviewFilter;
+                  })
+                  .map((review) => {
+                    const isCopied = copiedReviewText === review.id;
+                    return (
+                      <div
+                        key={review.id}
+                        className="p-6 rounded-xl bg-[#080B09] border border-white/10 hover:border-white/20 transition-all space-y-4"
+                      >
+                        {/* Review Header */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            {review.clientAvatar ? (
+                              <img
+                                src={review.clientAvatar}
+                                alt={review.clientName}
+                                className="w-10 h-10 rounded-full object-cover border border-[#00FF00]/40"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center font-heading font-bold text-white">
+                                {review.clientName.charAt(0)}
+                              </div>
+                            )}
+
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-heading text-sm font-bold text-white">
+                                  {review.clientName}
+                                </h3>
+                                <span className="text-neutral-600">•</span>
+                                <span className="text-xs text-neutral-300 font-sans">
+                                  {review.clientCompany}
+                                </span>
+                                {review.verifiedClient && (
+                                  <span className="px-1.5 py-0.2 rounded bg-[#00FF00]/10 text-[#00FF00] border border-[#00FF00]/30 font-mono text-[9px] font-bold">
+                                    VERIFIED CLIENT
+                                  </span>
+                                )}
+                              </div>
+                              <div className="font-mono text-[11px] text-neutral-500">
+                                Service: <span className="text-neutral-300">{review.serviceName}</span> • Submitted: {new Date(review.createdAt).toLocaleDateString()}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Star Rating & Status Badge */}
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-1 text-[#FFAE00]">
+                              {Array.from({ length: 5 }).map((_, i) => (
+                                <Star
+                                  key={i}
+                                  className={`w-4 h-4 ${
+                                    i < review.rating ? 'fill-[#FFAE00]' : 'text-neutral-700'
+                                  }`}
+                                />
+                              ))}
+                            </div>
+
+                            <Badge
+                              label={
+                                review.status === 'featured'
+                                  ? 'FEATURED ON LANDING'
+                                  : review.status === 'published'
+                                  ? 'PUBLISHED'
+                                  : 'PENDING APPROVAL'
+                              }
+                              variant={
+                                review.status === 'featured'
+                                  ? 'orange'
+                                  : review.status === 'published'
+                                  ? 'green'
+                                  : 'gray'
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        {/* Review Body */}
+                        <div className="p-4 rounded-lg bg-black/60 border border-white/5 space-y-2">
+                          <div className="font-heading text-sm font-bold text-white">
+                            &ldquo;{review.headline}&rdquo;
+                          </div>
+                          <p className="text-xs text-neutral-300 font-sans leading-relaxed">
+                            {review.comment}
+                          </p>
+                          {review.wouldRecommend && (
+                            <div className="pt-2 flex items-center gap-1.5 font-mono text-[10px] text-[#00FF00]">
+                              <ThumbsUp className="w-3.5 h-3.5" />
+                              <span>Would recommend Trevor to other business partners: YES</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Admin Action Bar */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs font-mono">
+                          <div className="flex items-center gap-2">
+                            <span className="text-neutral-500 text-[11px]">DISPLAY STATUS:</span>
+                            <button
+                              onClick={() => updateReviewStatus(review.id, 'featured')}
+                              className={`px-2 py-0.5 rounded text-[11px] border cursor-pointer ${
+                                review.status === 'featured'
+                                  ? 'bg-[#FFAE00]/20 border-[#FFAE00]/50 text-[#FFAE00] font-bold'
+                                  : 'bg-white/5 border-white/10 text-neutral-400 hover:text-white'
+                              }`}
+                            >
+                              Feature on Landing
+                            </button>
+                            <button
+                              onClick={() => updateReviewStatus(review.id, 'published')}
+                              className={`px-2 py-0.5 rounded text-[11px] border cursor-pointer ${
+                                review.status === 'published'
+                                  ? 'bg-[#00FF00]/20 border-[#00FF00]/50 text-[#00FF00] font-bold'
+                                  : 'bg-white/5 border-white/10 text-neutral-400 hover:text-white'
+                              }`}
+                            >
+                              Publish
+                            </button>
+                            <button
+                              onClick={() => updateReviewStatus(review.id, 'pending')}
+                              className={`px-2 py-0.5 rounded text-[11px] border cursor-pointer ${
+                                review.status === 'pending'
+                                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 font-bold'
+                                  : 'bg-white/5 border-white/10 text-neutral-400 hover:text-white'
+                              }`}
+                            >
+                              Set Pending
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleCopyReviewQuote(review)}
+                              className="px-2.5 py-1 rounded bg-white/5 hover:bg-white/15 border border-white/15 text-neutral-300 hover:text-white flex items-center gap-1 cursor-pointer"
+                            >
+                              {isCopied ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-[#00FF00]" />
+                                  <span className="text-[#00FF00] font-bold">Copied Quote!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span>Copy for Social / Google Post</span>
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Delete review from ${review.clientName}?`)) {
+                                  deleteReview(review.id);
+                                }
+                              }}
+                              className="p-1 rounded hover:bg-red-500/20 text-neutral-500 hover:text-red-400 transition-colors cursor-pointer"
+                              title="Delete Review"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================
               TAB: LANDING PAGE CMS & CONTENT EDITOR
              ======================================================== */}
           {activeTab === 'landing' && (
@@ -1619,6 +2792,132 @@ export const AdminPortal: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-sans">
+                  {/* Founder Photo & Portrait Studio */}
+                  <div className="md:col-span-2 p-4 rounded-xl bg-black border border-white/10 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <label className="font-mono text-neutral-200 text-xs font-bold flex items-center gap-2">
+                        <Camera className="w-4 h-4 text-[#00FF00]" />
+                        <span>Founder Portrait Photo &amp; Avatar</span>
+                      </label>
+                      <span className="font-mono text-[10px] text-[#00FF00] bg-[#00FF00]/10 border border-[#00FF00]/30 px-2 py-0.5 rounded">
+                        SYNCS TO HERO, ABOUT &amp; HEADER
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
+                      {/* Live Preview Card */}
+                      <div className="sm:col-span-4 flex justify-center">
+                        <div className="relative w-36 aspect-[3/4] rounded-xl overflow-hidden border-2 border-[#00FF00]/50 shadow-[0_0_20px_rgba(0,255,0,0.2)] group bg-[#080B09]">
+                          <img
+                            src={landingFormData.founderPhotoUrl || '/trevor-portrait.jpg'}
+                            alt={landingFormData.founderName || 'Founder Portrait'}
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).src = '/trevor-photo.jpg';
+                            }}
+                            className="w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
+                          <div className="absolute bottom-2 left-2 right-2 text-center">
+                            <span className="font-mono text-[9px] text-[#00FF00] font-bold bg-black/80 px-1.5 py-0.5 rounded border border-[#00FF00]/30">
+                              LIVE PREVIEW
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Controls Column */}
+                      <div className="sm:col-span-8 space-y-3">
+                        {/* Upload from Computer */}
+                        <div>
+                          <label className="block text-[11px] font-mono text-neutral-300 mb-1">
+                            1. Upload Your Own Photo (From Computer / Mobile):
+                          </label>
+                          <label className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-dashed border-[#00FF00]/50 hover:border-[#00FF00] bg-white/5 hover:bg-white/10 text-white font-mono text-xs cursor-pointer transition-all">
+                            <Upload className="w-4 h-4 text-[#00FF00]" />
+                            <span>Choose Photo File (JPG, PNG, WebP)</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleFounderPhotoUpload}
+                              className="hidden"
+                            />
+                          </label>
+                          <span className="text-[10px] text-neutral-500 font-mono block mt-1">
+                            Instantly loads your photo and syncs across the site when published.
+                          </span>
+                        </div>
+
+                        {/* Photo URL Input */}
+                        <div>
+                          <label className="block text-[11px] font-mono text-neutral-300 mb-1">
+                            2. Or Enter Photo URL:
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="url"
+                              value={landingFormData.founderPhotoUrl || ''}
+                              onChange={(e) =>
+                                setLandingFormData({ ...landingFormData, founderPhotoUrl: e.target.value })
+                              }
+                              placeholder="https://example.com/your-photo.jpg"
+                              className="flex-1 px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#FFAE00] focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSaveFounderPhotoUrl(landingFormData.founderPhotoUrl || '')}
+                              className="px-3 py-1.5 rounded bg-[#00FF00] hover:bg-white text-black font-heading font-bold text-xs transition-colors cursor-pointer"
+                            >
+                              Save URL
+                            </button>
+                            {landingFormData.founderPhotoUrl && (
+                              <button
+                                type="button"
+                                onClick={() => handleSaveFounderPhotoUrl('/trevor-portrait.jpg')}
+                                className="px-2.5 py-1.5 rounded bg-white/5 hover:bg-red-500/20 text-neutral-400 hover:text-red-400 text-xs font-mono transition-colors cursor-pointer"
+                              >
+                                Reset
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Quick Presets */}
+                        <div>
+                          <span className="block text-[10px] font-mono text-neutral-400 mb-1.5">
+                            Quick Portrait Presets (Click to Apply Immediately):
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {[
+                              { label: 'Default Portrait', url: '/trevor-portrait.jpg' },
+                              { label: 'Alternative Studio', url: '/trevor-photo.jpg' },
+                              {
+                                label: 'Tech Headshot',
+                                url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80',
+                              },
+                              {
+                                label: 'Executive Shot',
+                                url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=800&q=80',
+                              },
+                            ].map((preset) => (
+                              <button
+                                key={preset.label}
+                                type="button"
+                                onClick={() => handleSaveFounderPhotoUrl(preset.url)}
+                                className={`px-2 py-1 rounded text-[10px] font-mono border transition-all cursor-pointer ${
+                                  (landingFormData.founderPhotoUrl || '/trevor-portrait.jpg') === preset.url
+                                    ? 'bg-[#00FF00]/20 border-[#00FF00] text-[#00FF00] font-bold shadow-[0_0_8px_rgba(0,255,0,0.3)]'
+                                    : 'bg-white/5 border-white/10 text-neutral-400 hover:text-white'
+                                }`}
+                              >
+                                {preset.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="space-y-1">
                     <label className="font-mono text-neutral-300 block">Founder Name</label>
                     <input
@@ -1789,17 +3088,105 @@ export const AdminPortal: React.FC = () => {
             </div>
           )}
           {activeTab === 'settings' && (
-            <div className="space-y-6 max-w-2xl">
+            <div className="space-y-6 max-w-3xl">
               <div>
                 <h2 className="font-heading text-xl font-bold text-white">
                   Studio Settings &amp; Configuration
                 </h2>
                 <p className="text-xs text-neutral-400 font-sans">
-                  Manage owner credentials, verified WhatsApp business number, and currency formatting.
+                  Manage business profile credentials, Google Business integration, pricing policies, and payment instructions.
                 </p>
               </div>
 
+              {/* 1. Studio Identity & Founder Avatar */}
               <div className="p-6 rounded-xl bg-[#080B09] border border-white/10 space-y-4 font-sans text-xs">
+                <div className="flex items-center justify-between">
+                  <div className="font-mono text-xs text-[#00FF00] uppercase font-bold tracking-wider">
+                    STUDIO IDENTITY &amp; FOUNDER AVATAR
+                  </div>
+                  <Badge label="VERIFIED OPERATOR" variant="green" />
+                </div>
+
+                {/* Quick Avatar Preview and Changer */}
+                <div className="p-4 rounded-lg bg-black border border-white/10 flex flex-col sm:flex-row items-center gap-4">
+                  <div className="relative w-20 aspect-[3/4] rounded-lg overflow-hidden border border-[#00FF00]/50 shadow-[0_0_15px_rgba(0,255,0,0.2)] bg-[#111] shrink-0">
+                    <img
+                      src={landingFormData.founderPhotoUrl || '/trevor-portrait.jpg'}
+                      alt={landingFormData.founderName || 'Founder Portrait'}
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = '/trevor-photo.jpg';
+                      }}
+                      className="w-full h-full object-cover object-top"
+                    />
+                  </div>
+                  <div className="space-y-1.5 flex-1 w-full text-left">
+                    <div className="font-heading font-bold text-white text-sm">
+                      {landingFormData.founderName || 'Trevor Don'}
+                    </div>
+                    <p className="text-[11px] text-neutral-400">
+                      Founder photo shown across the Hero, About page, and Header avatar.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <label className="px-2.5 py-1.5 rounded bg-[#00FF00]/15 hover:bg-[#00FF00]/30 text-[#00FF00] font-mono text-[11px] border border-[#00FF00]/40 cursor-pointer flex items-center gap-1.5 transition-all">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Upload From Device</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFounderPhotoUpload}
+                          className="hidden"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('landing')}
+                        className="px-2.5 py-1.5 rounded bg-white/5 hover:bg-white/10 text-neutral-300 font-mono text-[11px] border border-white/10 transition-colors cursor-pointer"
+                      >
+                        Open Full CMS Studio
+                      </button>
+                    </div>
+
+                    {/* Quick photo URL and presets in Settings */}
+                    <div className="pt-2 border-t border-white/10 space-y-2">
+                      <div className="flex gap-2">
+                        <input
+                          type="url"
+                          value={landingFormData.founderPhotoUrl || ''}
+                          onChange={(e) =>
+                            setLandingFormData({ ...landingFormData, founderPhotoUrl: e.target.value })
+                          }
+                          placeholder="Or paste photo URL..."
+                          className="flex-1 px-2.5 py-1 rounded bg-[#111] border border-white/20 text-white font-mono text-xs focus:border-[#00FF00] focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSaveFounderPhotoUrl(landingFormData.founderPhotoUrl || '')}
+                          className="px-2.5 py-1 rounded bg-[#00FF00] text-black font-mono font-bold text-xs hover:bg-white transition-colors cursor-pointer"
+                        >
+                          Save
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {[
+                          { label: 'Default', url: '/trevor-portrait.jpg' },
+                          { label: 'Alt Studio', url: '/trevor-photo.jpg' },
+                          { label: 'Tech Shot', url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80' },
+                          { label: 'Executive', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=800&q=80' },
+                        ].map((preset) => (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            onClick={() => handleSaveFounderPhotoUrl(preset.url)}
+                            className="px-2 py-0.5 rounded text-[10px] font-mono bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white cursor-pointer"
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="space-y-1">
                   <label className="font-mono text-neutral-300 block">Studio Brand Name</label>
                   <input
@@ -1810,14 +3197,28 @@ export const AdminPortal: React.FC = () => {
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="font-mono text-neutral-300 block">Owner / Admin Email</label>
-                  <input
-                    type="email"
-                    value={settings.adminEmail}
-                    onChange={(e) => updateSettings({ adminEmail: e.target.value })}
-                    className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#FFAE00] focus:outline-none"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="font-mono text-neutral-300 block">Owner / Admin Email</label>
+                    <input
+                      type="email"
+                      value={settings.adminEmail}
+                      onChange={(e) => updateSettings({ adminEmail: e.target.value })}
+                      className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#FFAE00] focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-mono text-neutral-300 block">Studio Base Operating Currency</label>
+                    <select
+                      value={settings.currency}
+                      onChange={(e) => updateSettings({ currency: e.target.value as any })}
+                      className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#FFAE00] focus:outline-none"
+                    >
+                      <option value="KES">KES (Kenyan Shilling) — Primary Base</option>
+                      <option value="USD">USD (US Dollar)</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="space-y-1">
@@ -1832,20 +3233,186 @@ export const AdminPortal: React.FC = () => {
                     className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#FFAE00] focus:outline-none"
                   />
                   <span className="font-mono text-[10px] text-neutral-500">
-                    Lead notifications and secure document links will prefill to this number.
+                    Lead intake notifications, WhatsApp concierge buttons, and document links prefill to this number.
+                  </span>
+                </div>
+              </div>
+
+              {/* 2. Google Business Profile & Review Link */}
+              <div className="p-6 rounded-xl bg-[#080B09] border border-[#FFAE00]/30 space-y-4 font-sans text-xs">
+                <div className="flex items-center justify-between">
+                  <div className="font-mono text-xs text-[#FFAE00] uppercase font-bold tracking-wider flex items-center gap-2">
+                    <Star className="w-4 h-4 fill-[#FFAE00]" />
+                    <span>GOOGLE BUSINESS PROFILE &amp; REVIEW LINK</span>
+                  </div>
+                  <Badge label="REPUTATION LINKED" variant="orange" />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-mono text-neutral-300 block">
+                    Google Business Review / Profile URL
+                  </label>
+                  <input
+                    type="url"
+                    value={settings.googleBusinessProfileUrl || ''}
+                    onChange={(e) => updateSettings({ googleBusinessProfileUrl: e.target.value })}
+                    placeholder="https://maps.app.goo.gl/... or https://g.page/r/.../review"
+                    className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#FFAE00] focus:outline-none"
+                  />
+                  <span className="font-mono text-[10px] text-neutral-500">
+                    Clients who rate your work in the Client Portal will receive a 1-click button opening this URL to leave a Google review.
                   </span>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-mono text-neutral-300 block">Default Currency</label>
-                  <select
-                    value={settings.currency}
-                    onChange={(e) => updateSettings({ currency: e.target.value as any })}
+                  <label className="font-mono text-neutral-300 block">
+                    Google Place ID (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.googleBusinessPlaceId || ''}
+                    onChange={(e) => updateSettings({ googleBusinessPlaceId: e.target.value })}
+                    placeholder="ChIJN1t_tDeuEmsRUsoyG83frY4"
                     className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#FFAE00] focus:outline-none"
-                  >
-                    <option value="KES">KES (Kenyan Shilling)</option>
-                    <option value="USD">USD (US Dollar)</option>
-                  </select>
+                  />
+                </div>
+              </div>
+
+              {/* 3. Pricing Policies & Regional Currency Engine */}
+              <div className="p-6 rounded-xl bg-[#080B09] border border-white/10 space-y-5 font-sans text-xs">
+                <div className="flex items-center justify-between">
+                  <div className="font-mono text-xs text-[#00FF00] uppercase font-bold tracking-wider flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-[#00FF00]" />
+                    <span>PRICING, BASE CURRENCY &amp; REGIONAL CONVERSION ENGINE</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded bg-[#00FF00]/10 text-[#00FF00] font-mono text-[10px] font-bold border border-[#00FF00]/30">
+                    MULTI-CURRENCY ACTIVE
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="font-mono text-neutral-300 block">Studio Base Operating Currency *</label>
+                    <select
+                      value={settings.currency}
+                      onChange={(e) => updateSettings({ currency: e.target.value as any })}
+                      className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#00FF00] focus:outline-none"
+                    >
+                      <option value="KES">KES — Kenyan Shilling (Primary Studio Base)</option>
+                      <option value="USD">USD — US Dollar</option>
+                    </select>
+                    <span className="font-mono text-[10px] text-neutral-500">
+                      You price your packages and invoices in this base currency.
+                    </span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-mono text-neutral-300 block">USD to KES Exchange Multiplier</label>
+                    <input
+                      type="number"
+                      value={settings.exchangeRateUsdToKes ?? 130}
+                      onChange={(e) => updateSettings({ exchangeRateUsdToKes: Number(e.target.value) })}
+                      placeholder="130"
+                      className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#00FF00] focus:outline-none"
+                    />
+                    <span className="font-mono text-[10px] text-neutral-500">
+                      Used to auto-convert USD prices to KES and vice-versa (e.g. 1 USD = 130 KES).
+                    </span>
+                  </div>
+                </div>
+
+                {/* Regional Auto-Detection Toggle */}
+                <div className="p-3.5 rounded-lg bg-black border border-white/10 flex items-center justify-between">
+                  <div>
+                    <div className="font-mono text-white text-xs font-bold">
+                      Visitor Regional Auto-Detection
+                    </div>
+                    <div className="text-[11px] text-neutral-400 font-sans mt-0.5">
+                      Automatically detect each website visitor&apos;s geographic region and display prices in their local currency.
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.enableRegionalCurrencyDetection ?? true}
+                      onChange={(e) => updateSettings({ enableRegionalCurrencyDetection: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#00FF00]"></div>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="font-mono text-neutral-300 block">Default Upfront Deposit (%)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={settings.defaultDepositPercent ?? 50}
+                      onChange={(e) => updateSettings({ defaultDepositPercent: Number(e.target.value) })}
+                      className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#FFAE00] focus:outline-none"
+                    />
+                    <span className="font-mono text-[10px] text-neutral-500">Required before kickoff.</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-mono text-neutral-300 block">Hourly Rate (USD)</label>
+                    <input
+                      type="number"
+                      value={settings.hourlyRateUSD ?? 95}
+                      onChange={(e) => updateSettings({ hourlyRateUSD: Number(e.target.value) })}
+                      className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#FFAE00] focus:outline-none"
+                    />
+                    <span className="font-mono text-[10px] text-neutral-500">Ad-hoc sprints / revisions.</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-mono text-neutral-300 block">Hourly Rate (KES)</label>
+                    <input
+                      type="number"
+                      value={settings.hourlyRateKES ?? 12500}
+                      onChange={(e) => updateSettings({ hourlyRateKES: Number(e.target.value) })}
+                      className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#FFAE00] focus:outline-none"
+                    />
+                    <span className="font-mono text-[10px] text-neutral-500">Local currency equivalent.</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-mono text-neutral-300 block">M-Pesa Paybill / Till Number</label>
+                  <input
+                    type="text"
+                    value={settings.mpesaPaybillOrTill || ''}
+                    onChange={(e) => updateSettings({ mpesaPaybillOrTill: e.target.value })}
+                    placeholder="Buy Goods Till: 9832104 / Paybill: 247247 Acc: TREVON"
+                    className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#FFAE00] focus:outline-none"
+                  />
+                  <span className="font-mono text-[10px] text-neutral-500">
+                    Shown on client invoices and checkout modals.
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-mono text-neutral-300 block">Bank Wire Transfer Details</label>
+                  <input
+                    type="text"
+                    value={settings.bankTransferDetails || ''}
+                    onChange={(e) => updateSettings({ bankTransferDetails: e.target.value })}
+                    placeholder="I&M Bank Kenya • Account: 01204859123001 • Swift: IMBLKENA"
+                    className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs focus:border-[#FFAE00] focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-mono text-neutral-300 block">Availability &amp; Booking Notice</label>
+                  <input
+                    type="text"
+                    value={settings.bookingNotice || ''}
+                    onChange={(e) => updateSettings({ bookingNotice: e.target.value })}
+                    placeholder="Currently accepting Q4 2026 client sprints — 2 onboarding slots open"
+                    className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-sans text-xs focus:border-[#FFAE00] focus:outline-none"
+                  />
                 </div>
               </div>
             </div>
@@ -2222,6 +3789,376 @@ export const AdminPortal: React.FC = () => {
                 className="px-4 py-1.5 rounded bg-[#00FF00] hover:bg-white text-black font-heading font-bold"
               >
                 Post to Client Feed
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* 8. Service Editor Modal */}
+      {showServiceModal && (
+        <Modal
+          isOpen={true}
+          onClose={() => setShowServiceModal(false)}
+          title={editingServiceId ? 'Edit Engineering Service' : 'Create New Engineering Service'}
+        >
+          <form onSubmit={handleSaveService} className="space-y-4 font-sans text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="font-mono text-neutral-300 block mb-1">Service Title *</label>
+                <input
+                  type="text"
+                  required
+                  value={serviceForm.title || ''}
+                  onChange={(e) => setServiceForm({ ...serviceForm, title: e.target.value })}
+                  placeholder="e.g. Full-Stack Web Applications & SaaS"
+                  className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="font-mono text-neutral-300 block mb-1">URL Slug *</label>
+                <input
+                  type="text"
+                  required
+                  value={serviceForm.slug || ''}
+                  onChange={(e) => setServiceForm({ ...serviceForm, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
+                  placeholder="e.g. full-stack-web-apps"
+                  className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="font-mono text-neutral-300 block mb-1">Tagline *</label>
+              <input
+                type="text"
+                required
+                value={serviceForm.tagline || ''}
+                onChange={(e) => setServiceForm({ ...serviceForm, tagline: e.target.value })}
+                placeholder="High-craft interfaces engineered for effortless conversion and operator ergonomics"
+                className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="font-mono text-neutral-300 block mb-1">Detailed Description *</label>
+              <textarea
+                rows={3}
+                required
+                value={serviceForm.description || ''}
+                onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })}
+                placeholder="Explain the technical scope, stack capabilities, architecture, and value proposition..."
+                className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white text-xs"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="font-mono text-neutral-300 block mb-1">Starting Price (KES) *</label>
+                <input
+                  type="number"
+                  required
+                  value={serviceForm.startingPriceKES || 0}
+                  onChange={(e) => setServiceForm({ ...serviceForm, startingPriceKES: Number(e.target.value) })}
+                  className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="font-mono text-neutral-300 block mb-1">Starting Price (USD) *</label>
+                <input
+                  type="number"
+                  required
+                  value={serviceForm.startingPriceUSD || 0}
+                  onChange={(e) => setServiceForm({ ...serviceForm, startingPriceUSD: Number(e.target.value) })}
+                  className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="font-mono text-neutral-300 block mb-1">Typical Timeline *</label>
+                <input
+                  type="text"
+                  required
+                  value={serviceForm.timeline || ''}
+                  onChange={(e) => setServiceForm({ ...serviceForm, timeline: e.target.value })}
+                  placeholder="e.g. 3 - 4 Weeks"
+                  className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="font-mono text-neutral-300 block mb-1">Service Icon</label>
+                <select
+                  value={serviceForm.icon || 'Code'}
+                  onChange={(e) => setServiceForm({ ...serviceForm, icon: e.target.value })}
+                  className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs"
+                >
+                  <option value="Layout">Layout (UI/UX Design)</option>
+                  <option value="Code">Code (Full-Stack / Web)</option>
+                  <option value="Zap">Zap (Offline / Speed)</option>
+                  <option value="Server">Server (Cloud / DevOps)</option>
+                  <option value="Cpu">Cpu (Systems / Architecture)</option>
+                  <option value="Database">Database (Data / Ledgers)</option>
+                  <option value="Smartphone">Smartphone (Mobile)</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-4 pt-5">
+                <label className="flex items-center gap-2 cursor-pointer font-mono text-xs text-neutral-200">
+                  <input
+                    type="checkbox"
+                    checked={serviceForm.popular || false}
+                    onChange={(e) => setServiceForm({ ...serviceForm, popular: e.target.checked })}
+                    className="rounded bg-black border-white/20 text-[#FFAE00]"
+                  />
+                  <span>Mark Popular Badge</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer font-mono text-xs text-neutral-200">
+                  <input
+                    type="checkbox"
+                    checked={serviceForm.active ?? true}
+                    onChange={(e) => setServiceForm({ ...serviceForm, active: e.target.checked })}
+                    className="rounded bg-black border-white/20 text-[#00FF00]"
+                  />
+                  <span>Active Live</span>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label className="font-mono text-neutral-300 block mb-1">
+                Key Deliverables (One per line)
+              </label>
+              <textarea
+                rows={4}
+                value={(serviceForm.deliverables || []).join('\n')}
+                onChange={(e) =>
+                  setServiceForm({
+                    ...serviceForm,
+                    deliverables: e.target.value.split('\n').filter((d) => d.trim().length > 0),
+                  })
+                }
+                placeholder="Tokenized Figma Design System&#10;Interactive Mobile &amp; Desktop Prototypes&#10;Production CI/CD Pipeline"
+                className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs"
+              />
+            </div>
+
+            <div className="pt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowServiceModal(false)}
+                className="px-3 py-1.5 rounded bg-white/5 text-neutral-300 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-1.5 rounded bg-[#00FF00] hover:bg-white text-black font-heading font-bold"
+              >
+                {editingServiceId ? 'Save Changes' : 'Publish Service'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* 9. Pricing Package Editor Modal */}
+      {showPricingModal && (
+        <Modal
+          isOpen={true}
+          onClose={() => setShowPricingModal(false)}
+          title={editingPricingId ? 'Edit Pricing Package' : 'Create New Pricing Package'}
+        >
+          <form onSubmit={handleSavePricing} className="space-y-4 font-sans text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="font-mono text-neutral-300 block mb-1">Package Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={pricingForm.name || ''}
+                  onChange={(e) => setPricingForm({ ...pricingForm, name: e.target.value })}
+                  placeholder="e.g. Fast-Track MVP Sprint"
+                  className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="font-mono text-neutral-300 block mb-1">Badge Tag</label>
+                <input
+                  type="text"
+                  value={pricingForm.badge || ''}
+                  onChange={(e) => setPricingForm({ ...pricingForm, badge: e.target.value })}
+                  placeholder="e.g. MOST POPULAR, RAPID LAUNCH"
+                  className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs uppercase"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="font-mono text-neutral-300 block mb-1">Description *</label>
+              <textarea
+                rows={2}
+                required
+                value={pricingForm.description || ''}
+                onChange={(e) => setPricingForm({ ...pricingForm, description: e.target.value })}
+                placeholder="Ideal for early-stage founders wanting a validated, production-grade digital platform ready for public users."
+                className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white text-xs"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="font-mono text-neutral-300 block mb-1">Price (KES) *</label>
+                <input
+                  type="number"
+                  required
+                  value={pricingForm.priceKES || 0}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setPricingForm({ ...pricingForm, priceKES: val });
+                  }}
+                  className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const kes = pricingForm.priceKES || 0;
+                    setPricingForm({ ...pricingForm, priceUSD: Math.round(kes / 130) });
+                  }}
+                  className="mt-1 text-[10px] font-mono text-[#00FF00] hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Calculator className="w-3 h-3" />
+                  <span>Auto-Calc USD (÷130)</span>
+                </button>
+              </div>
+
+              <div>
+                <label className="font-mono text-neutral-300 block mb-1">Price (USD) *</label>
+                <input
+                  type="number"
+                  required
+                  value={pricingForm.priceUSD || 0}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setPricingForm({ ...pricingForm, priceUSD: val });
+                  }}
+                  className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const usd = pricingForm.priceUSD || 0;
+                    setPricingForm({ ...pricingForm, priceKES: Math.round(usd * 130) });
+                  }}
+                  className="mt-1 text-[10px] font-mono text-[#FFAE00] hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Calculator className="w-3 h-3" />
+                  <span>Auto-Calc KES (×130)</span>
+                </button>
+              </div>
+
+              <div>
+                <label className="font-mono text-neutral-300 block mb-1">Deposit Required (%)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  required
+                  value={pricingForm.depositRequiredPercent ?? 50}
+                  onChange={(e) => setPricingForm({ ...pricingForm, depositRequiredPercent: Number(e.target.value) })}
+                  className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs"
+                />
+                <span className="text-[10px] text-neutral-500 font-mono block mt-1">
+                  Required before kickoff
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="font-mono text-neutral-300 block mb-1">Billing Period *</label>
+                <input
+                  type="text"
+                  required
+                  value={pricingForm.billingPeriod || ''}
+                  onChange={(e) => setPricingForm({ ...pricingForm, billingPeriod: e.target.value })}
+                  placeholder="e.g. Fixed Scope, Monthly Retainer"
+                  className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="font-mono text-neutral-300 block mb-1">Delivery Time *</label>
+                <input
+                  type="text"
+                  required
+                  value={pricingForm.deliveryTime || ''}
+                  onChange={(e) => setPricingForm({ ...pricingForm, deliveryTime: e.target.value })}
+                  placeholder="e.g. 3 - 4 Weeks, 6 - 8 Weeks"
+                  className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 pt-1">
+              <label className="flex items-center gap-2 cursor-pointer font-mono text-xs text-neutral-200">
+                <input
+                  type="checkbox"
+                  checked={pricingForm.highlight || false}
+                  onChange={(e) => setPricingForm({ ...pricingForm, highlight: e.target.checked })}
+                  className="rounded bg-black border-white/20 text-[#00FF00]"
+                />
+                <span>Highlight / Recommended Package</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer font-mono text-xs text-neutral-200">
+                <input
+                  type="checkbox"
+                  checked={pricingForm.active ?? true}
+                  onChange={(e) => setPricingForm({ ...pricingForm, active: e.target.checked })}
+                  className="rounded bg-black border-white/20 text-[#00FF00]"
+                />
+                <span>Active Live</span>
+              </label>
+            </div>
+
+            <div>
+              <label className="font-mono text-neutral-300 block mb-1">
+                Feature Deliverables (One per line)
+              </label>
+              <textarea
+                rows={5}
+                value={(pricingForm.features || []).join('\n')}
+                onChange={(e) =>
+                  setPricingForm({
+                    ...pricingForm,
+                    features: e.target.value.split('\n').filter((f) => f.trim().length > 0),
+                  })
+                }
+                placeholder="Complete UI/UX Design &amp; Prototype&#10;Full-Stack TypeScript Implementation&#10;Database Setup (Firestore or Postgres)&#10;M-Pesa Daraja or Stripe Integration&#10;Google Cloud Run Deployment"
+                className="w-full px-3 py-2 rounded bg-black border border-white/20 text-white font-mono text-xs"
+              />
+            </div>
+
+            <div className="pt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowPricingModal(false)}
+                className="px-3 py-1.5 rounded bg-white/5 text-neutral-300 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-1.5 rounded bg-[#00FF00] hover:bg-white text-black font-heading font-bold"
+              >
+                {editingPricingId ? 'Save Package' : 'Create Package'}
               </button>
             </div>
           </form>
